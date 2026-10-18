@@ -40,6 +40,21 @@ curl -s http://127.0.0.1:7890/api/v1/tasks
 See [`service/README.md`](service/README.md) for the full API, layout and
 degradation guarantees.
 
+## Debian TUI
+
+Read-only terminal dashboard (Rust + Ratatui) providing symmetric observability
+across task scheduling, Herdr panes, and Pi activity directly in your terminal.
+Connects to the monitoring service via local HTTP and WebSocket.
+
+```bash
+cd tui
+cargo build --release
+./target/release/agentpulse-tui --url http://127.0.0.1:7890
+```
+
+See [`tui/README.md`](tui/README.md) for keybindings, layout dimensions, and
+product positioning.
+
 ## Android dashboard
 
 Four screens (simplified Chinese UI, English paths / identifiers kept as-is):
@@ -82,5 +97,6 @@ Then point the Android app at `http://127.0.0.1:7890`.
 ## Documentation
 
 - Service: [`service/README.md`](service/README.md)
+- TUI: [`tui/README.md`](tui/README.md)
 - Design report: `firstmate/data/agentpulse-design/report.md` (authoritative
   spec for field names, endpoint shapes and correlation rules).
