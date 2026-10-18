@@ -18,6 +18,7 @@ from .collectors.firstmate import FirstMateCollector, StatusLine
 from .collectors.herdr import HerdrCollector
 from .collectors.pi import PiCollector
 from .config import Settings
+from .correlation import session_id_from_path
 from .models import (
     KIND_AGENT_STATUS_CHANGED,
     KIND_DECISION_NEEDED,
@@ -393,6 +394,7 @@ class Monitor:
             socket=str(self.settings.herdr_socket),
             protocol=self.herdr.protocol or 0,
         )
+        self.herdr.mark_synced()
 
         panes: dict[str, TerminalPane] = {}
         raw_panes = snapshot.get("panes")
@@ -513,8 +515,7 @@ class Monitor:
                 self.world.set_health(
                     "pi", "ok", active_sessions_tracked=self.pi.active_session_count()
                 )
-                if emitted:
-                    self.pi.mark_synced()
+                self.pi.mark_synced()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -532,7 +533,7 @@ class Monitor:
             path = self.pi.newest_session_file(task.worktree)
             if path is None:
                 continue
-            session_id = path.stem
+            session_id = session_id_from_path(path) or path.stem
             records = self.pi.read_new_records(path)
             if not records:
                 continue

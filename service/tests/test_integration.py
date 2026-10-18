@@ -75,3 +75,31 @@ def test_live_herdr_agent_list():
     for agent in agents:
         assert "pane_id" in agent
         assert "agent_status" in agent
+
+
+def test_live_pi_sessions_readable():
+    from agentpulse_service.collectors.pi import PiCollector
+    sessions_root = Path.home() / ".pi" / "agent" / "sessions"
+    if not sessions_root.is_dir():
+        pytest.skip("Pi sessions root not present")
+    collector = PiCollector(Settings(home=LIVE_HOME))
+    jsonl_files = list(sessions_root.glob("*/*.jsonl"))
+    if not jsonl_files:
+        pytest.skip("no Pi session files found")
+    records = collector.read_new_records(jsonl_files[0])
+    assert isinstance(records, list)
+    if records:
+        events = collector.ingest_records("test-session", records[:20])
+        assert isinstance(events, list)
+
+
+def test_settings_env_and_path_conversion(monkeypatch):
+    monkeypatch.setenv("AGENTPULSE_HOME", str(LIVE_HOME))
+    monkeypatch.setenv("AGENTPULSE_HOST", "0.0.0.0")
+    monkeypatch.setenv("AGENTPULSE_PORT", "9999")
+    settings = Settings(home=str(LIVE_HOME))
+    assert isinstance(settings.home, Path)
+    assert settings.home == LIVE_HOME
+    assert settings.host == "0.0.0.0"
+    assert settings.port == 9999
+

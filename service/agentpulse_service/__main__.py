@@ -17,7 +17,13 @@ import uvicorn
 
 from .api import create_app
 from .bus import EventBus
-from .config import DEFAULT_FM_HOME, Settings
+from .config import (
+    DEFAULT_FM_HOME,
+    Settings,
+    _default_fm_home,
+    _default_host,
+    _default_port,
+)
 from .monitor import Monitor
 from .store import EventStore
 from .world import World
@@ -28,28 +34,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         prog="agentpulse_service",
         description="AgentPulse read-only monitoring service for FirstMate + Herdr + Pi.",
     )
-    parser.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=7890, help="bind port (default 7890)")
+    parser.add_argument("--host", default=_default_host(), help="bind address (default 127.0.0.1 or $AGENTPULSE_HOST)")
+    parser.add_argument("--port", type=int, default=_default_port(), help="bind port (default 7890 or $AGENTPULSE_PORT)")
     parser.add_argument(
         "--home",
         type=Path,
         default=None,
-        help="FirstMate home directory (default ~/agentpulse/firstmate)",
+        help="FirstMate home directory (default ~/agentpulse/firstmate or $AGENTPULSE_HOME)",
     )
     parser.add_argument(
         "--db-path",
         type=Path,
         default=None,
-        help="SQLite event store path (default ~/.local/state/agentpulse/agentpulse.db)",
+        help="SQLite event store path (default ~/.local/state/agentpulse/agentpulse.db or $AGENTPULSE_DB_PATH)",
     )
     return parser.parse_args(argv)
 
 
 def build(args: argparse.Namespace) -> tuple[object, Settings]:
+    home_dir = args.home if args.home else _default_fm_home()
     settings = Settings(
         host=args.host,
         port=args.port,
-        home=args.home if args.home else DEFAULT_FM_HOME,
+        home=home_dir,
     )
     if args.db_path:
         settings.db_path = args.db_path
@@ -74,6 +81,13 @@ def build(args: argparse.Namespace) -> tuple[object, Settings]:
 
     app = create_app(monitor, lifespan=lifespan)
     return app, settings
+
+
+def app_factory() -> object:
+    """FastAPI application factory for uvicorn --factory."""
+    args = parse_args([])
+    application, _ = build(args)
+    return application
 
 
 def main(argv: Sequence[str] | None = None) -> int:

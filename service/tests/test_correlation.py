@@ -100,3 +100,18 @@ def test_session_id_from_filename():
         pi_session_id_from_filename("2026-10-18T08-01-04-248Z_01a14e07-4ef6-73d2-92d7-565b7426ee84.jsonl")
         == "01a14e07-4ef6-73d2-92d7-565b7426ee84"
     )
+
+
+def test_normalize_pane_id():
+    from agentpulse_service.util import normalize_pane_id
+
+    assert normalize_pane_id("w1Q:p2") == "w1Q:p2"
+    assert normalize_pane_id("default:w1Q:p2") == "w1Q:p2"
+    assert normalize_pane_id("default:w1F:p2") == "w1F:p2"
+    assert normalize_pane_id("default:w16:p13") == "w16:p13"
+    assert normalize_pane_id("default:w16:pB") == "w16:pB"
+    assert normalize_pane_id("custom:session:w1P:p0") == "w1P:p0"
+    assert normalize_pane_id("invalid") is None
+    assert normalize_pane_id("") is None
+    assert normalize_pane_id(None) is None
+

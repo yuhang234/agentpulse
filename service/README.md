@@ -31,37 +31,40 @@ Android app (stage 3) are out of scope here.
 
 ## Install & run
 
-```bash
-# Python 3.13, standard library except FastAPI/uvicorn/websockets.
-python3.13 -m venv .venv
-.venv/bin/pip install -r service/requirements.txt
+Install and run (Python 3.13, standard library except FastAPI/uvicorn/websockets).
 
-# Run (bind 127.0.0.1:7890 by default). The --home points at the FirstMate home.
+```bash
+# Repeatable startup helper (creates .venv if missing and execs uvicorn)
+./service/run.sh
+
+# Or bind 0.0.0.0 for direct LAN access across machines on the same Wi-Fi
+./service/run.sh --host 0.0.0.0 --port 7890
+
+# Or run module directly
 PYTHONPATH=service .venv/bin/python -m agentpulse_service \
     --home /home/Yuhang/agentpulse/firstmate \
     --host 127.0.0.1 --port 7890
+
+# Stop the service with Ctrl+C or kill <pid>
 ```
 
-`--home` defaults to `~/agentpulse/firstmate`; the SQLite store defaults to
-`~/.local/state/agentpulse/agentpulse.db` (override with `--db-path`).
+`--home` defaults to `~/agentpulse/firstmate` (override with `--home` or `$AGENTPULSE_HOME` / `$FIRSTMATE_HOME`).
+The SQLite store defaults to `~/.local/state/agentpulse/agentpulse.db` (override with `--db-path` or `$AGENTPULSE_DB_PATH`).
+Host and port can also be set via `AGENTPULSE_HOST` / `HOST` and `AGENTPULSE_PORT` / `PORT`.
 
-## Verify
+## LAN binding & Android access
 
-```bash
-curl -s http://127.0.0.1:7890/api/v1/health
-curl -s http://127.0.0.1:7890/api/v1/overview
-curl -s http://127.0.0.1:7890/api/v1/tasks
-curl -s 'http://127.0.0.1:7890/api/v1/events?since_seq=0&limit=5'
-curl -s 'http://127.0.0.1:7890/api/v1/tasks/<task-id>/terminal?lines=40&format=ansi'
-```
+Under WSL2 mirrored networking mode, binding to `0.0.0.0` exposes the port directly to the local area network.
+Clients on the same Wi-Fi network (such as the Android phone) can connect directly to `http://<lan-ip>:7890` (for example, `http://10.103.105.100:7890` on this host).
+If a local proxy is active in your terminal, bypass it for LAN addresses (e.g. `curl --noproxy '*'`).
 
-## SSH tunnel (Android access)
-
-The service binds to `127.0.0.1` only, so the phone reaches it through a local
-port forward (report 6.2, risk two):
+Alternatively, the phone can reach the local service through an SSH tunnel or ADB reverse port forward:
 
 ```bash
-# From the phone / Termius / ConnectBot:
+# USB debugging:
+adb reverse tcp:7890 tcp:7890
+
+# SSH local port forward:
 ssh -N -L 7890:127.0.0.1:7890 <user>@<windows-or-wsl2-host>
 ```
 

@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from ..clock import epoch_now
 from ..config import Settings
 from .base import CollectorHealth
 
@@ -220,3 +221,7 @@ class HerdrCollector:
         request = {"id": "agentpulse", "method": "events.subscribe", "params": {"subscriptions": subscriptions}}
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
+
+    def mark_synced(self) -> None:
+        self.health.mark_ok(epoch_now())
+
