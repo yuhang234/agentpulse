@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Design report 4.2.A: OLED dark-first palette (same values as PulseColors.Background). -->
+    <color name="pulse_background">#0D1117</color>
+    <color name="pulse_primary_cyan">#38BDF8</color>
+    <color name="launcher_background">#0D1117</color>
+</resources>

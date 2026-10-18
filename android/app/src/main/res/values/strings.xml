@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AgentPulse</string>
+
+    <string name="notif_channel_critical">严重告警（弹出提醒）</string>
+    <string name="notif_channel_critical_desc">任务失败、Agent 崩溃、等待人工决策等必须立即处理的告警</string>
+    <string name="notif_channel_warning">一般告警（静默）</string>
+    <string name="notif_channel_warning_desc">Agent 阻塞、连接降级等静默记录的告警，不弹出横幅</string>
+    <string name="notif_channel_status">服务连接状态</string>
+    <string name="notif_channel_status_desc">与 AgentPulse 监控服务的连接状态变更</string>
+
+    <string name="notif_icon_desc">AgentPulse 告警</string>
+</resources>
