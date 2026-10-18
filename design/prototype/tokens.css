@@ -1,0 +1,127 @@
+/* ============================================================================
+   AgentPulse 设计令牌（Design Tokens）
+   单一来源：design/spec.md §4.2 工业级设计系统 + §5.3 终端色彩映射表
+   原型内所有尺寸/颜色/圆角/动效必须引用本文件的变量，不得在别处硬编码。
+   ========================================================================= */
+
+:root {
+  /* ── §4.2 A 语义调色板（Dark-First OLED） ───────────────────────────────── */
+  --color-bg: #0d1117;              /* 深度暗黑背景，降低 OLED 功耗 */
+  --color-surface: #161b22;         /* 卡片容器表面色 */
+  --color-surface-variant: #21262d; /* 次级容器 / 输入底色 */
+  --color-outline: #30363d;         /* 1dp 容器分割线 */
+  --color-primary: #38bdf8;         /* 活跃进行中（对比度 8.2:1） */
+  --color-success: #34d399;         /* 成功 / 完成（对比度 9.5:1） */
+  --color-warning: #fbbf24;         /* 阻塞 / 决策中（对比度 10.1:1） */
+  --color-error: #f43f5e;           /* 失败 / 异常中断（对比度 6.8:1） */
+  --color-text-primary: #f0f6fc;    /* 一级主要文本（对比度 13.5:1） */
+  --color-text-secondary: #8b949e;  /* 二级辅助注释（对比度 5.8:1） */
+  --color-text-muted: #484f58;      /* 占位符 / 极弱文本 */
+  --color-terminal-bg: #080b0f;     /* 终端代码区域黑底 */
+
+  /* ── §5.3 窗格焦点色（TUI 16 色降级表） ─────────────────────────────────── */
+  --color-focus: #a78bfa;           /* 选中区域的高亮边框 */
+
+  /* ── 由上述令牌派生（仅透明度叠加，不引入新色相） ───────────────────────── */
+  --color-primary-a08: rgba(56, 189, 248, 0.08);
+  --color-primary-a14: rgba(56, 189, 248, 0.14);
+  --color-primary-a24: rgba(56, 189, 248, 0.24);
+  --color-primary-a44: rgba(56, 189, 248, 0.44);
+  --color-success-a12: rgba(52, 211, 153, 0.12);
+  --color-warning-a08: rgba(251, 191, 36, 0.08);
+  --color-warning-a16: rgba(251, 191, 36, 0.16);
+  --color-warning-a34: rgba(251, 191, 36, 0.34);
+  --color-error-a08: rgba(244, 63, 94, 0.08);
+  --color-error-a16: rgba(244, 63, 94, 0.16);
+  --color-error-a34: rgba(244, 63, 94, 0.34);
+  --color-focus-a30: rgba(167, 139, 250, 0.3);
+  --color-focus-a12: rgba(167, 139, 250, 0.12);
+  --color-outline-soft: rgba(48, 54, 61, 0.6);
+  --color-scrim: rgba(1, 4, 9, 0.72);
+
+  /* ── §4.2 B 字体排印（Typography Scale） ───────────────────────────────── */
+  --font-sans: Inter, "HarmonyOS Sans SC", "PingFang SC", "Source Han Sans SC",
+    "Noto Sans CJK SC", "Microsoft YaHei", Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "JetBrains Mono", "Cascadia Mono",
+    Menlo, Consolas, "Liberation Mono", monospace;
+
+  --type-display-lg-size: 28px;   --type-display-lg-line: 34px;   --type-display-lg-weight: 700;
+  --type-headline-md-size: 20px;  --type-headline-md-line: 26px;  --type-headline-md-weight: 600;
+  --type-title-md-size: 16px;     --type-title-md-line: 22px;     --type-title-md-weight: 500;
+  --type-body-md-size: 14px;      --type-body-md-line: 20px;      --type-body-md-weight: 400;
+  --type-body-sm-size: 12px;      --type-body-sm-line: 16px;      --type-body-sm-weight: 400;
+  --type-label-sm-size: 10px;     --type-label-sm-line: 14px;     --type-label-sm-weight: 500;
+  --type-label-sm-tracking: 0.5px;
+  --type-mono-md-size: 13px;      --type-mono-md-line: 18px;      --type-mono-md-weight: 400;
+  --type-mono-sm-size: 11px;      --type-mono-sm-line: 16px;      --type-mono-sm-weight: 400;
+
+  /* ── §4.2 C 间距标尺（Spacing Scale） ──────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ── §4.2 C 圆角（Radii） ──────────────────────────────────────────────── */
+  --radius-badge: 6px;   /* 标签与微标 Tags / Badges */
+  --radius-card: 12px;   /* 卡片容器 Cards */
+  --radius-sheet: 16px;  /* 底部浮层 BottomSheets（仅顶部两角） */
+  --radius-pill: 999px;
+
+  /* ── §4.2 C 动效规范（Motion Specs） ───────────────────────────────────── */
+  --motion-breath: 1200ms;                       /* 状态呼吸灯，无限循环 */
+  --ease-fast-out-slow-in: cubic-bezier(0.4, 0, 0.2, 1); /* FastOutSlowInEasing */
+  --motion-enter: 250ms;                         /* 列表项滑入 */
+  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1); /* DecelerateEasing */
+
+  /* ── 触控与可读性（§4.5 无障碍：最小 48dp 触摸靶区） ───────────────────── */
+  --tap-target-min: 48px;
+  --hairline: 1px;
+}
+
+/* 尊重系统「减少动态效果」设置（§4.5 / 无障碍基线） */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-breath: 0ms;
+    --motion-enter: 0ms;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--type-body-md-size);
+  line-height: var(--type-body-md-line);
+  font-weight: var(--type-body-md-weight);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 全局可见焦点环（无障碍基线） */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 文本工具类：等宽字体族，用于路径 / 标识符 / 日志 / 终端 */
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-md-size);
+  line-height: var(--type-mono-md-line);
+  font-weight: var(--type-mono-md-weight);
+  font-variant-ligatures: none;
+}
+.mono-sm {
+  font-family: var(--font-mono);
+  font-size: var(--type-mono-sm-size);
+  line-height: var(--type-mono-sm-line);
+  font-variant-ligatures: none;
+}

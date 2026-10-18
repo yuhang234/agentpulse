@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentPulse 可点击原型 · FirstMate + Herdr + Pi 监控看板</title>
+<meta name="description" content="AgentPulse 设计规范的可点击原型：安卓四屏、横屏/平板布局与 Debian TUI。全部数据为模拟，无需网络与构建步骤。">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="appbar">
+    <div class="appbar__inner">
+      <div class="appbar__mark" aria-hidden="true"></div>
+      <div class="appbar__titles">
+        <h1 class="appbar__title">AgentPulse 可点击原型</h1>
+        <p class="appbar__sub">FirstMate + Herdr + Pi 全局监控看板 · 只读 v1 · 设计走查版</p>
+      </div>
+      <div class="appbar__spacer"></div>
+      <span class="sim-badge">全部数据为模拟</span>
+    </div>
+  </header>
+
+  <section class="strip" id="strip" aria-label="原型状态控制">
+    <div class="strip__inner">
+
+      <div class="strip__group" data-control="view" aria-label="视图">
+        <span class="strip__label">视图</span>
+        <div class="segmented" role="group" aria-label="视图">
+          <button type="button" data-value="phone" aria-pressed="true">手机 · 竖屏</button>
+          <button type="button" data-value="landscape" aria-pressed="false">手机 · 横屏</button>
+          <button type="button" data-value="tablet" aria-pressed="false">平板 · 三栏</button>
+          <button type="button" data-value="tui" aria-pressed="false">Debian TUI</button>
+        </div>
+      </div>
+
+      <div class="strip__group" data-control="connection" aria-label="连接状态">
+        <span class="strip__label">连接状态 §3.2C</span>
+        <div class="segmented" role="group" aria-label="连接状态">
+          <button type="button" data-value="healthy" aria-pressed="true"><span class="dot"></span>Healthy</button>
+          <button type="button" data-value="stale" aria-pressed="false"><span class="dot"></span>Stale</button>
+          <button type="button" data-value="disconnected" aria-pressed="false"><span class="dot"></span>Disconnected</button>
+        </div>
+      </div>
+
+      <div class="strip__group" data-control="data" aria-label="数据状态">
+        <span class="strip__label">数据状态</span>
+        <div class="segmented" role="group" aria-label="数据状态">
+          <button type="button" data-value="populated" aria-pressed="true">有数据</button>
+          <button type="button" data-value="empty" aria-pressed="false">空</button>
+          <button type="button" data-value="error" aria-pressed="false">错误</button>
+        </div>
+      </div>
+
+      <div class="strip__group" data-control="scenario" aria-label="工作流场景">
+        <span class="strip__label">工作流场景</span>
+        <div class="segmented" role="group" aria-label="工作流场景">
+          <button type="button" data-value="steady" aria-pressed="true">稳态</button>
+          <button type="button" data-value="blocked" aria-pressed="false">决策卡点</button>
+        </div>
+      </div>
+
+      <div class="strip__group" data-control="fit" aria-label="缩放">
+        <span class="strip__label">缩放</span>
+        <div class="segmented" role="group" aria-label="缩放">
+          <button type="button" data-value="fit" aria-pressed="true">适应窗口</button>
+          <button type="button" data-value="100" aria-pressed="false">100%</button>
+        </div>
+      </div>
+
+      <div class="strip__spacer"></div>
+
+      <div class="strip__group">
+        <span class="strip__label">快捷键</span>
+        <span class="strip__hint"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> 切换四屏 · <kbd>Esc</kbd> 关闭浮层 · <kbd>T</kbd> 切换 TUI 尺寸</span>
+      </div>
+
+    </div>
+  </section>
+
+  <main class="stage" id="stage"></main>
+
+  <noscript>
+    <p style="padding:24px;color:#8b949e;">
+      本原型完全由本地 JavaScript 渲染（无构建步骤、无网络请求）。请在启用 JavaScript 的环境下打开
+      <code>design/prototype/index.html</code>。
+    </p>
+  </noscript>
+
+</div>
+
+<script src="data.js"></script>
+<script src="tui.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
