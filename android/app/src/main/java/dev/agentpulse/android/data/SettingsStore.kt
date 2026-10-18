@@ -45,6 +45,47 @@ data class TransportSettings(
     /** 顶栏展示用短标识，例如 `127.0.0.1:7890`。 */
     val endpointLabel: String get() = "$host:$port"
 
+    /**
+     * 规范化接入参数，自动处理局域网 IP / host:port / 协议头 / 路径容错。
+     */
+    fun sanitized(): TransportSettings {
+        var cleanHost = host.trim()
+        var cleanPort = port
+
+        // 兼容带协议头的情况（如 http://192.168.1.5:7890 或 ws://192.168.1.5:7890）
+        val schemeRegex = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
+        cleanHost = cleanHost.replace(schemeRegex, "")
+
+        // 兼容带路径的情况（如 192.168.1.5:7890/ 或 192.168.1.5/api）
+        if (cleanHost.contains("/")) {
+            cleanHost = cleanHost.substringBefore("/")
+        }
+
+        // 兼容在 host 字段中直接填入 host:port 的情况（如 192.168.1.5:7890）
+        if (cleanHost.contains(":")) {
+            if (cleanHost.startsWith("[") && cleanHost.contains("]:")) {
+                val hostPart = cleanHost.substringBefore("]:") + "]"
+                val portPart = cleanHost.substringAfter("]:")
+                cleanHost = hostPart
+                portPart.toIntOrNull()?.let { cleanPort = it }
+            } else if (!cleanHost.startsWith("[")) {
+                val parts = cleanHost.split(":")
+                if (parts.size == 2) {
+                    cleanHost = parts[0]
+                    parts[1].toIntOrNull()?.let { cleanPort = it }
+                }
+            }
+        }
+
+        return copy(
+            host = cleanHost.ifBlank { DEFAULT_HOST },
+            port = cleanPort.coerceIn(1, 65_535),
+            socketPath = socketPath.trim().ifBlank { DEFAULT_SOCKET_PATH },
+            apiPrefix = apiPrefix.trim().trim('/').ifBlank { DEFAULT_API_PREFIX.trim('/') },
+            clientId = clientId.trim().ifBlank { defaultClientId() },
+        )
+    }
+
     private fun normalizedSocketPath(): String =
         "/" + socketPath.trim().trimStart('/')
 
@@ -114,14 +155,6 @@ class SettingsStore(context: Context) {
             clientId = prefs.getString(KEY_CLIENT_ID, defaults.clientId) ?: defaults.clientId,
         ).sanitized()
     }
-
-    private fun TransportSettings.sanitized(): TransportSettings = copy(
-        host = host.trim().ifBlank { TransportSettings.DEFAULT_HOST },
-        port = port.coerceIn(1, 65_535),
-        socketPath = socketPath.trim().ifBlank { TransportSettings.DEFAULT_SOCKET_PATH },
-        apiPrefix = apiPrefix.trim().trim('/').ifBlank { TransportSettings.DEFAULT_API_PREFIX.trim('/') },
-        clientId = clientId.trim().ifBlank { TransportSettings.defaultClientId() },
-    )
 
     private companion object {
         const val PREFS_NAME = "agentpulse.settings"
