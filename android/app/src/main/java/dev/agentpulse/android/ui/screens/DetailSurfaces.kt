@@ -180,7 +180,7 @@ fun SettingsDialog(viewModel: AppViewModel) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
                 Text(
-                    text = "监控服务隧道出口地址（默认 127.0.0.1:7890）",
+                    text = "监控服务地址（局域网直连如 192.168.x.x:7890，或本地隧道 127.0.0.1:7890）",
                     style = MaterialTheme.typography.bodySmall,
                     color = PulseColors.TextMuted,
                 )
@@ -195,11 +195,11 @@ fun SettingsDialog(viewModel: AppViewModel) {
                 onClick = {
                     viewModel.updateTransport { current ->
                         current.copy(
-                            host = host.ifBlank { TransportSettings.DEFAULT_HOST },
-                            port = port.toIntOrNull()?.coerceIn(1, 65535) ?: current.port,
-                            socketPath = socketPath.ifBlank { TransportSettings.DEFAULT_SOCKET_PATH },
-                            apiPrefix = apiPrefix.ifBlank { TransportSettings.DEFAULT_API_PREFIX },
-                        )
+                            host = host,
+                            port = port.toIntOrNull() ?: current.port,
+                            socketPath = socketPath,
+                            apiPrefix = apiPrefix,
+                        ).sanitized()
                     }
                     viewModel.closeSettings()
                 },

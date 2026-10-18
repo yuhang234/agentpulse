@@ -150,6 +150,7 @@ class AlertStore(
             title = "服务断开连接",
             message = "已静默 ${silenceSeconds}s，后台正在按指数退避重连。",
             suggestedActions = listOf(
+                "确认手机与电脑在同一 Wi-Fi，且设置页填写的电脑局域网 IP:端口 正确",
                 "adb reverse tcp:7890 tcp:7890",
                 "ssh -L 7890:127.0.0.1:7890 <user>@<host>",
             ),

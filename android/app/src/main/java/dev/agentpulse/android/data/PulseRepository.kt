@@ -144,6 +144,7 @@ class PulseRepository(
         if (socketLoopJob == null) return
         socketLoopJob?.cancel()
         socketLoopJob = scope.launch { socketLoop() }
+        scope.launch { refresh() }
     }
 
     /** 更新接入参数并立即重建连接（设置页保存）。 */
