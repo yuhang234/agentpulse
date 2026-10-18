@@ -1,65 +1,86 @@
 # AgentPulse
 
-AgentPulse turns an idle Android phone into a dedicated, read-only monitoring screen for the
-FirstMate + Herdr + Pi AI coding workflow. This repository contains the Android native dashboard
-(phase 3 of the [design report](firstmate/data/agentpulse-design/report.md)); the monitoring
-service and the Debian TUI live in sibling branches.
+Turn an idle Android phone into a dedicated, read-only monitoring screen for the
+**FirstMate + Herdr + Pi** AI coding workflow. AgentPulse is not a debug console
+for a single agent — it is one global dashboard across task scheduling
+(FirstMate), terminal panes (Herdr) and fine-grained agent execution (Pi).
 
-The Android app is **read-only**: it consumes the monitoring service's REST + WebSocket surface
-and never issues commands, edits the workflow, or controls any agent.
+The repository is split into stages (see the design report under
+`firstmate/data/agentpulse-design/report.md`):
 
-## Android 监控看板（Android dashboard）
+1. **Monitoring service** (`service/`) — a read-only service on WSL2 Debian that
+   correlates the three data sources into one task → pane → session model and
+   serves it over HTTP + WebSocket.
+2. **Debian TUI** (`tui/`) — a terminal client (Rust + Ratatui).
+3. **Android app** (`android/`) — a Kotlin + Compose dashboard reached over an
+   SSH tunnel.
 
-Four screens, all in simplified Chinese UI with English paths / identifiers / log lines kept as-is:
+## Monitoring service
 
-- **总览** (Overview) — global metrics, active tasks, pending decisions, queued backlog.
-- **任务** (Tasks) — the FirstMate task queue with state filters and per-task drill-down (worktree,
-  branch, Herdr pane, ANSI terminal tail).
-- **动态** (Live) — a virtualized event timeline that auto-scrolls and pauses on user scroll.
-- **告警** (Alerts) — needs-decision / failures / disconnects, each with a copy-command affordance.
+Install and run (Python 3.13; only FastAPI / uvicorn / websockets beyond the
+standard library):
 
-### Build
+```bash
+python3.13 -m venv .venv
+.venv/bin/pip install -r service/requirements.txt
 
-The app is Kotlin + Jetpack Compose + Material 3, single Activity, `android/` only
-(compileSdk 35, minSdk 26, targetSdk 35, Kotlin 2.x with the Compose compiler plugin, version
-catalog in `gradle/libs.versions.toml`).
+PYTHONPATH=service .venv/bin/python -m agentpulse_service \
+    --home /home/Yuhang/agentpulse/firstmate \
+    --host 127.0.0.1 --port 7890
+```
 
-Prerequisites on the build host: JDK 17+, the Android SDK (35), and Gradle 8.x. On this machine
-the toolchain is at `~/gradle/bin/gradle` and `~/android-sdk`, and the Gradle/Maven repositories are
-only reachable through a local HTTP proxy, so `android/gradle.properties` carries
-`systemProp.{http,https}.proxy{Host,Port}=127.0.0.1:7897`.
+Verify:
 
-`android/local.properties` is intentionally **not committed** (it is in `android/.gitignore`); write
-`sdk.dir=<path-to-android-sdk>` there, or export the SDK via your IDE. There is no Gradle wrapper
-JAR committed either — invoke your local Gradle directly:
+```bash
+curl -s http://127.0.0.1:7890/api/v1/health
+curl -s http://127.0.0.1:7890/api/v1/overview
+curl -s http://127.0.0.1:7890/api/v1/tasks
+```
+
+See [`service/README.md`](service/README.md) for the full API, layout and
+degradation guarantees.
+
+## Android dashboard
+
+Four screens (simplified Chinese UI, English paths / identifiers kept as-is):
+**总览** (Overview), **任务** (Tasks), **动态** (Live), **告警** (Alerts).
+Kotlin + Jetpack Compose + Material 3, single Activity, `android/` only.
+
+Prerequisites: JDK 17+, the Android SDK (35), and Gradle 8.x. On this machine
+the toolchain is at `~/gradle/bin/gradle` and `~/android-sdk`, and the Gradle /
+Maven repositories are only reachable through a local HTTP proxy, so
+`android/gradle.properties` carries the proxy settings. `android/local.properties`
+is intentionally not committed (write `sdk.dir=<path>` there).
 
 ```bash
 cd android
 ~/gradle/bin/gradle :app:assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
-~/gradle/bin/gradle :app:testDebugUnitTest    # JVM tests: DTO deserialization, connection state, event merge
+~/gradle/bin/gradle :app:testDebugUnitTest
 ```
 
-### Open the tunnel to the monitoring service
+## SSH tunnel from the phone
 
-The monitoring service binds `127.0.0.1:7890` on the WSL2/Debian host. The app does **not** run an
-SSH tunnel in v1 — establish the tunnel outside the app, then point the app's settings at the loop
-endpoint (the default is already `127.0.0.1:7890`).
-
-Over USB debugging (simplest — the default settings work as-is):
+The service binds `127.0.0.1:7890` only, so the phone reaches it through a local
+port forward:
 
 ```bash
+# USB debugging: the default settings work as-is
 adb reverse tcp:7890 tcp:7890
+
+# Wi-Fi / SSH: local port forward
+ssh -N -L 7890:127.0.0.1:7890 <user>@<host>
 ```
 
-Over Wi-Fi / adb-over-TCP, forward a local port on the phone via SSH to the host's service:
+Then point the Android app at `http://127.0.0.1:7890`.
+
+## Tests
 
 ```bash
-ssh -L 7890:127.0.0.1:7890 <user>@<host>
+.venv/bin/python -m pytest -q
 ```
 
-The host / port / WebSocket path / API prefix are all editable in-app (设置 / Settings → 连接设置),
-and changes reconnect immediately.
+## Documentation
 
-REST endpoints and the WebSocket contract the app speaks are specified in report chapter 3:
-`GET /api/v1/health`, `/api/v1/overview`, `/api/v1/tasks`, `/api/v1/tasks/{id}/terminal`,
-`/api/v1/events?since_seq=`, and `ws://127.0.0.1:7890/ws` with heartbeat ping/pong.
+- Service: [`service/README.md`](service/README.md)
+- Design report: `firstmate/data/agentpulse-design/report.md` (authoritative
+  spec for field names, endpoint shapes and correlation rules).

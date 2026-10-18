@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# The package lives under service/ and is importable as agentpulse_service.
+pythonpath = ["service"]
+testpaths = ["service/tests"]
+addopts = "-ra"
