@@ -21,13 +21,18 @@ Install and run (Python 3.13; only FastAPI / uvicorn / websockets beyond the
 standard library):
 
 ```bash
-python3.13 -m venv .venv
-.venv/bin/pip install -r service/requirements.txt
+# Quick startup helper (creates .venv if missing and execs uvicorn)
+./service/run.sh
 
-PYTHONPATH=service .venv/bin/python -m agentpulse_service \
-    --home /home/Yuhang/agentpulse/firstmate \
-    --host 127.0.0.1 --port 7890
+# Bind to 0.0.0.0 for LAN access (WSL2 mirrored networking mode)
+./service/run.sh --host 0.0.0.0 --port 7890
+
+# Stop the service with Ctrl+C or kill <pid>
 ```
+
+When bound to `0.0.0.0`, clients on the same Wi-Fi can reach the service directly at `http://<lan-ip>:7890` (e.g. `http://10.103.105.100:7890`).
+The FirstMate home directory defaults to `~/agentpulse/firstmate` and can be configured with `--home <path>` or `AGENTPULSE_HOME` / `FIRSTMATE_HOME`.
+Host and port can also be configured with `AGENTPULSE_HOST` / `HOST` and `AGENTPULSE_PORT` / `PORT`.
 
 Verify:
 

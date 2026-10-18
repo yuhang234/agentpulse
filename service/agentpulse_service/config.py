@@ -16,6 +16,34 @@ def _default_state_dir() -> Path:
     return Path.home() / ".local" / "state" / "agentpulse"
 
 
+def _default_fm_home() -> Path:
+    env = os.environ.get("AGENTPULSE_HOME") or os.environ.get("FIRSTMATE_HOME")
+    if env:
+        return Path(env).expanduser().resolve()
+    return (Path.home() / "agentpulse" / "firstmate").resolve()
+
+
+def _default_host() -> str:
+    return os.environ.get("AGENTPULSE_HOST") or os.environ.get("HOST") or "127.0.0.1"
+
+
+def _default_port() -> int:
+    raw = os.environ.get("AGENTPULSE_PORT") or os.environ.get("PORT")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return 7890
+
+
+def _default_db_path() -> Path:
+    env = os.environ.get("AGENTPULSE_DB_PATH")
+    if env:
+        return Path(env).expanduser().resolve()
+    return _default_state_dir() / "agentpulse.db"
+
+
 DEFAULT_FM_HOME = Path.home() / "agentpulse" / "firstmate"
 DEFAULT_HERDR_SOCKET = Path.home() / ".config" / "herdr" / "herdr.sock"
 DEFAULT_PI_SESSIONS = Path.home() / ".pi" / "agent" / "sessions"
@@ -29,14 +57,34 @@ class Settings:
     writes, moves or locks anything underneath it.
     """
 
-    host: str = "127.0.0.1"
-    port: int = 7890
-    home: Path = field(default_factory=lambda: DEFAULT_FM_HOME)
-    db_path: Path = field(default_factory=lambda: _default_state_dir() / "agentpulse.db")
+    host: str = field(default_factory=_default_host)
+    port: int = field(default_factory=_default_port)
+    home: Path = field(default_factory=_default_fm_home)
+    db_path: Path = field(default_factory=_default_db_path)
     herdr_bin: str = "herdr"
     herdr_socket: Path = field(default_factory=lambda: DEFAULT_HERDR_SOCKET)
     pi_sessions_root: Path = field(default_factory=lambda: DEFAULT_PI_SESSIONS)
     version: str = __version__
+
+    def __post_init__(self) -> None:
+        if isinstance(self.home, str):
+            self.home = Path(self.home).expanduser().resolve()
+        elif isinstance(self.home, Path):
+            self.home = self.home.expanduser().resolve()
+        if isinstance(self.db_path, str):
+            self.db_path = Path(self.db_path).expanduser()
+        elif isinstance(self.db_path, Path):
+            self.db_path = self.db_path.expanduser()
+        if isinstance(self.herdr_socket, str):
+            self.herdr_socket = Path(self.herdr_socket).expanduser()
+        elif isinstance(self.herdr_socket, Path):
+            self.herdr_socket = self.herdr_socket.expanduser()
+        if isinstance(self.pi_sessions_root, str):
+            self.pi_sessions_root = Path(self.pi_sessions_root).expanduser()
+        elif isinstance(self.pi_sessions_root, Path):
+            self.pi_sessions_root = self.pi_sessions_root.expanduser()
+        if isinstance(self.port, str):
+            self.port = int(self.port)
 
     # Polling cadence (seconds). The Herdr socket event stream is push based;
     # the intervals below are the fallback polling cadence documented in

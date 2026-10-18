@@ -8,3 +8,10 @@ See ``service/README.md`` and ``firstmate/data/agentpulse-design/report.md``
 """
 
 __version__ = "1.0.0"
+
+
+def app() -> object:
+    """FastAPI application factory for uvicorn --factory."""
+    from .__main__ import app_factory
+    return app_factory()
+

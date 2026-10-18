@@ -8,6 +8,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -194,6 +195,9 @@ def tail_lines(text: str, count: int) -> list[str]:
     return lines[-count:]
 
 
+PANE_ID_RE = re.compile(r"^w[0-9A-Za-z]+:p[0-9A-Za-z]+$")
+
+
 def normalize_pane_id(value: str | None) -> str | None:
     """``default:w1F:p2`` -> ``w1F:p2``; invalid values return ``None``.
 
@@ -207,8 +211,7 @@ def normalize_pane_id(value: str | None) -> str | None:
     parts = text.split(":")
     for index in range(len(parts) - 1):
         candidate = ":".join(parts[index:])
-        head = candidate.split(":", 1)[0]
-        if head and head[0] == "w" and head[1:].isdigit():
+        if PANE_ID_RE.match(candidate):
             return candidate
     return None
 
