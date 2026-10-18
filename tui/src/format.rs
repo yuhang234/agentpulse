@@ -2,6 +2,7 @@
 //! unified-event line formatting (design report section 5.2 feed rows).
 
 use crate::model::Event;
+use crate::strings;
 
 /// Extract HH:MM:SS from an ISO-8601 UTC timestamp such as
 /// 2026-10-18T08:37:26.693Z. Falls back to --:--:-- when the string does
@@ -177,7 +178,11 @@ fn payload_line_count(p: &serde_json::Map<String, serde_json::Value>) -> Option<
 /// source tag). Mirrors the payload shapes the service really emits.
 pub fn format_event(event: &Event) -> String {
     let p = &event.payload;
-    let task = event.task_id.as_deref().unwrap_or(strings::DASH);
+    let task = event
+        .task_id
+        .as_deref()
+        .or_else(|| payload_str(p, "task_id"))
+        .unwrap_or(strings::DASH);
     match event.kind.as_str() {
         "task_state_changed" => {
             let state = payload_str(p, "state").unwrap_or("?");
@@ -206,7 +211,11 @@ pub fn format_event(event: &Event) -> String {
             }
         }
         "agent_status_changed" => {
-            let pane = event.pane_id.as_deref().unwrap_or(strings::DASH);
+            let pane = event
+                .pane_id
+                .as_deref()
+                .or_else(|| payload_str(p, "pane_id"))
+                .unwrap_or(strings::DASH);
             let cur = payload_str(p, "current_status").unwrap_or("unknown");
             match payload_str(p, "previous_status") {
                 Some(prev) => strings::evt_status_prev(pane, prev, cur),
@@ -214,7 +223,11 @@ pub fn format_event(event: &Event) -> String {
             }
         }
         "pane_output" => {
-            let pane = event.pane_id.as_deref().unwrap_or(strings::DASH);
+            let pane = event
+                .pane_id
+                .as_deref()
+                .or_else(|| payload_str(p, "pane_id"))
+                .unwrap_or(strings::DASH);
             match payload_line_count(p) {
                 Some(n) => strings::evt_pane_lines(pane, n),
                 None => match payload_str(p, "matched") {
@@ -290,16 +303,16 @@ mod tests {
     #[test]
     fn iso_epoch_known_values() {
         assert_eq!(iso_epoch("1970-01-01T00:00:00Z"), Some(0));
-        assert_eq!(iso_epoch("2026-10-18T08:37:26Z"), Some(1792377446));
-        assert_eq!(iso_epoch("2000-02-29T12:00:00Z"), Some(951782400));
+        assert_eq!(iso_epoch("2026-10-18T08:37:26Z"), Some(1792312646));
+        assert_eq!(iso_epoch("2000-02-29T12:00:00Z"), Some(951825600));
         assert_eq!(iso_epoch("nope"), None);
     }
 
     #[test]
     fn fmt_utc_datetime_roundtrip() {
         assert_eq!(fmt_utc_datetime(0), "1970-01-01 00:00:00");
-        assert_eq!(fmt_utc_datetime(1792377446), "2026-10-18 08:37:26");
-        assert_eq!(fmt_utc_datetime(951782400), "2000-02-29 12:00:00");
+        assert_eq!(fmt_utc_datetime(1792312646), "2026-10-18 08:37:26");
+        assert_eq!(fmt_utc_datetime(951825600), "2000-02-29 12:00:00");
     }
 
     #[test]
@@ -312,8 +325,10 @@ mod tests {
     #[test]
     fn truncate_respects_cjk_width() {
         assert_eq!(truncate_width("hello world", 5), "hello");
-        assert_eq!(truncate_width("中文中文", 6), "中文");
-        assert_eq!(truncate_width("中文中文", 7), "中文");
+        assert_eq!(truncate_width("中文中文", 4), "中文");
+        assert_eq!(truncate_width("中文中文", 5), "中文");
+        assert_eq!(truncate_width("中文中文", 6), "中文中");
+        assert_eq!(truncate_width("中文中文", 7), "中文中");
         assert_eq!(truncate_width("中文中文", 8), "中文中文");
         assert_eq!(truncate_width("abc", 0), "");
         assert_eq!(display_width("中文"), 4);

@@ -354,8 +354,9 @@ fn poll_once(
             ok = true;
             match page.events.last() {
                 Some(last) => {
+                    let last_seq = last.seq;
                     let _ = tx.send(NetEvent::Events(page.events));
-                    since = last.seq;
+                    since = last_seq;
                     if !page.has_more {
                         break;
                     }

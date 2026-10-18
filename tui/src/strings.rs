@@ -6,6 +6,8 @@
 //! without touching the render layer. Dynamic text is a function because
 //! format! requires a literal template.
 
+#![allow(dead_code)]
+
 // -- brand and window ---------------------------------------------------------
 
 pub const BRAND: &str = "AgentPulse · FirstMate+Herdr+Pi";

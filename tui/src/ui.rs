@@ -18,6 +18,7 @@ use crate::format::{
 use crate::layout::LayoutKind;
 use crate::model::Task;
 use crate::palette::Role;
+use crate::strings;
 
 const BRAND: &str = "AgentPulse · FirstMate+Herdr+Pi";
 const WIDE_TITLE: &str = "AgentPulse 监控中心 (Debian TUI v1.0)";
@@ -1116,8 +1117,13 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let mut out = String::new();
         for y in 0..h {
-            for x in 0..w {
-                out.push_str(buffer.get(x, y).symbol());
+            let mut x = 0;
+            while x < w {
+                let cell = &buffer[(x, y)];
+                let sym = cell.symbol();
+                out.push_str(sym);
+                let sw = unicode_width::UnicodeWidthStr::width(sym).max(1) as u16;
+                x += sw;
             }
             out.push('\n');
         }
@@ -1176,8 +1182,8 @@ mod tests {
 
     #[test]
     fn compact_layout_shows_brand_and_panels() {
-        let app = sample_app();
-        app_at(80, 24);
+        let mut app = sample_app();
+        app.size = (80, 24);
         let text = render_to_string(&app, 80, 24);
         assert!(text.contains("AgentPulse"));
         assert!(text.contains("活跃任务"));
@@ -1232,7 +1238,11 @@ mod tests {
         let text = render_to_string(&app, 80, 24);
         // Every rendered row must be exactly 80 cells wide.
         for line in text.lines() {
-            assert_eq!(line.chars().count(), 80, "row not truncated: {line:?}");
+            assert_eq!(
+                crate::format::display_width(line),
+                80,
+                "row not 80 cells wide: {line:?}"
+            );
         }
     }
 }
