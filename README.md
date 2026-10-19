@@ -45,6 +45,22 @@ curl -s http://127.0.0.1:7890/api/v1/tasks
 See [`service/README.md`](service/README.md) for the full API, layout and
 degradation guarantees.
 
+## Deployment and CLI management
+
+Manage both the monitoring service (port 7890) and APK download server (port 7891) via the `pulse` command.
+
+```bash
+# Install pulse to ~/.local/bin/pulse
+./deploy/install.sh
+
+# Manage services
+pulse start
+pulse status
+pulse stop
+```
+
+See [`deploy/README.md`](deploy/README.md) for full usage, subcommands, firewall management, and log viewing.
+
 ## Debian TUI
 
 Read-only terminal dashboard (Rust + Ratatui) providing symmetric observability
