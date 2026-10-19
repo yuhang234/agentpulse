@@ -72,8 +72,8 @@ class Task:
     assigned_pane_id: str | None = None
     active_agent_session_id: str | None = None
 
-    # Runtime-only enrichment (not part of the Task schema, but used by
-    # /api/v1/overview and by the collectors).
+    # Runtime-only enrichment (used by /api/v1/overview, /api/v1/tasks,
+    # and by the collectors).
     agent: str | None = None
     agent_status: str | None = None
     since: str | None = None
@@ -111,6 +111,8 @@ class Task:
             "hold_kind": self.hold_kind,
             "assigned_pane_id": self.assigned_pane_id,
             "active_agent_session_id": self.active_agent_session_id,
+            "agent": self.agent,
+            "agent_status": self.agent_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }

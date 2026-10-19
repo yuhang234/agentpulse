@@ -117,6 +117,7 @@ Then point the Android app at `http://127.0.0.1:7890`.
 
 ## Documentation
 
+- Runbook: [`docs/runbook.md`](docs/runbook.md) (end-to-end operational guide covering deployment, daily `pulse` CLI management, network policies, and troubleshooting).
 - Service: [`service/README.md`](service/README.md)
 - TUI: [`tui/README.md`](tui/README.md)
 - Design report: `firstmate/data/agentpulse-design/report.md` (authoritative

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from agentpulse_service.api import create_app
 from agentpulse_service.bus import EventBus
-from agentpulse_service.models import Event
+from agentpulse_service.models import Event, TerminalPane
 from agentpulse_service.monitor import build_tasks
 
 
@@ -134,6 +134,35 @@ def test_tasks_shape_and_filters(make_monitor, settings):
 
         by_repo = client.get("/api/v1/tasks", params={"repo": "agentpulse"}).json()
         assert by_repo["total"] == 2
+
+
+def test_tasks_agent_consistency_with_overview(make_monitor, settings):
+    client, _m, _s, _b, world = _client(make_monitor, settings)
+    world.upsert_pane(
+        TerminalPane(
+            pane_id="w1:p1",
+            workspace_id="w1",
+            agent="opencode",
+            agent_status="working",
+        )
+    )
+    with client:
+        overview = client.get("/api/v1/overview").json()
+        tasks = client.get("/api/v1/tasks").json()
+
+    overview_active = {t["id"]: t for t in overview["active_tasks"]}
+    assert "t1" in overview_active
+    t1_overview = overview_active["t1"]
+    assert t1_overview["agent"] == "opencode"
+    assert t1_overview["agent_status"] == "working"
+
+    tasks_by_id = {t["id"]: t for t in tasks["tasks"]}
+    assert "t1" in tasks_by_id
+    t1_task = tasks_by_id["t1"]
+    assert t1_task["agent"] == t1_overview["agent"]
+    assert t1_task["agent_status"] == t1_overview["agent_status"]
+    assert t1_task["agent"] == "opencode"
+    assert t1_task["agent_status"] == "working"
 
 
 def test_events_cursor(make_monitor, settings):
