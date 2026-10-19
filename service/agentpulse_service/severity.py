@@ -4,12 +4,101 @@ Severity follows report section 2.4 (分级阶梯); dedup keys follow the same
 section's 幂等去重 rules.
 """
 
-from __future__ import annotations
-
 import hashlib
+import json
+import logging
+import os
+from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 SEVERITIES = ("debug", "info", "warning", "error", "critical")
+TIERS = ("info", "warning", "critical")
+
+DEFAULT_TIER_MAPPING: dict[str, str] = {
+    "critical": "critical",
+    "error": "warning",
+    "warning": "warning",
+    "info": "info",
+    "debug": "info",
+}
+
+ENV_TIER_MAPPING_PATH = "AGENTPULSE_TIER_MAPPING_PATH"
+
+
+def load_tier_mapping(path: str | Path | None = None) -> dict[str, str]:
+    """Load and validate tier mapping overrides from environment or file path.
+
+    Falls back to built-in DEFAULT_TIER_MAPPING with a logged warning if the
+    override file is missing, malformed, or contains unknown severities or tiers.
+    """
+    raw_path = path if path is not None else (
+        os.environ.get(ENV_TIER_MAPPING_PATH) or os.environ.get("AGENTPULSE_TIER_CONFIG")
+    )
+    if not raw_path:
+        return dict(DEFAULT_TIER_MAPPING)
+
+    file_path = Path(raw_path).expanduser()
+    if not file_path.is_file():
+        logger.warning(
+            "Tier mapping file not found at '%s'; falling back to default mapping",
+            file_path,
+        )
+        return dict(DEFAULT_TIER_MAPPING)
+
+    try:
+        with file_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as exc:
+        logger.warning(
+            "Failed to parse tier mapping JSON from '%s' (%s); falling back to default mapping",
+            file_path,
+            exc,
+        )
+        return dict(DEFAULT_TIER_MAPPING)
+
+    if not isinstance(data, dict):
+        logger.warning(
+            "Tier mapping in '%s' is not a JSON object; falling back to default mapping",
+            file_path,
+        )
+        return dict(DEFAULT_TIER_MAPPING)
+
+    # Validate keys against SEVERITIES and values against TIERS
+    for k, v in data.items():
+        if k not in SEVERITIES or v not in TIERS:
+            logger.warning(
+                "Invalid severity '%s' or tier '%s' in '%s'; falling back to default mapping",
+                k,
+                v,
+                file_path,
+            )
+            return dict(DEFAULT_TIER_MAPPING)
+
+    merged = dict(DEFAULT_TIER_MAPPING)
+    merged.update(data)
+    return merged
+
+
+def tier_for_severity(
+    severity: str | None, mapping: dict[str, str] | None = None
+) -> str:
+    """Project a 5-level severity into a 3-tier presentation level."""
+    m = mapping if mapping is not None else load_tier_mapping()
+    sev = (severity or "").strip().lower()
+    return m.get(sev, "info")
+
+
+def tier_for(
+    kind: str,
+    payload: dict[str, Any] | None = None,
+    mapping: dict[str, str] | None = None,
+) -> str:
+    """Direct tier resolution for an event kind and payload."""
+    sev = severity_for(kind, payload)
+    return tier_for_severity(sev, mapping)
+
 
 # Task lifecycle states (FirstMate) that carry a severity of their own.
 _STATE_SEVERITY: dict[str, str] = {

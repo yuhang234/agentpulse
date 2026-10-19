@@ -36,6 +36,7 @@ import dev.agentpulse.android.data.PulseUiState
 import dev.agentpulse.android.data.model.PulseAlert
 import dev.agentpulse.android.ui.common.ConnectionBanners
 import dev.agentpulse.android.ui.common.ConnectionChip
+import dev.agentpulse.android.ui.common.CriticalAlertBanner
 import dev.agentpulse.android.ui.common.PulseClock
 import dev.agentpulse.android.ui.common.PulseStatusDot
 import dev.agentpulse.android.ui.screens.AlertsScreen
@@ -92,6 +93,10 @@ fun PulseApp(viewModel: AppViewModel, initialTab: String? = null) {
                 onOpenSettings = viewModel::openSettings,
             )
             ConnectionBanners(uiState.connection.state)
+            CriticalAlertBanner(
+                alerts = uiState.criticalAlerts,
+                onOpenAlerts = { viewModel.selectTab(PulseTab.Alerts) },
+            )
 
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (window != PulseWindowClass.Compact) {
@@ -105,7 +110,11 @@ fun PulseApp(viewModel: AppViewModel, initialTab: String? = null) {
                                 selected = selectedTab == dest.tab,
                                 onClick = { viewModel.selectTab(dest.tab) },
                                 icon = {
-                                    Icon(dest.icon, contentDescription = dest.label)
+                                    TabIcon(
+                                        dest = dest,
+                                        badgeCount = if (dest.tab == PulseTab.Alerts) alertCount else 0,
+                                        isCritical = uiState.criticalAlertCount > 0,
+                                    )
                                 },
                                 label = { Text(dest.label) },
                                 alwaysShowLabel = true,
@@ -148,6 +157,7 @@ fun PulseApp(viewModel: AppViewModel, initialTab: String? = null) {
                                 TabIcon(
                                     dest = dest,
                                     badgeCount = if (dest.tab == PulseTab.Alerts) alertCount else 0,
+                                    isCritical = uiState.criticalAlertCount > 0,
                                 )
                             },
                             label = { Text(dest.label) },
@@ -181,14 +191,14 @@ fun PulseApp(viewModel: AppViewModel, initialTab: String? = null) {
 }
 
 @Composable
-private fun TabIcon(dest: PulseDestination, badgeCount: Int) {
+private fun TabIcon(dest: PulseDestination, badgeCount: Int, isCritical: Boolean = false) {
     Box {
         Icon(dest.icon, contentDescription = dest.label)
         if (badgeCount > 0) {
             val text = if (badgeCount > 99) "99+" else badgeCount.toString()
             Surface(
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-                color = PulseColors.WarningAmber,
+                color = if (isCritical) PulseColors.ErrorRose else PulseColors.WarningAmber,
                 modifier = Modifier.align(Alignment.TopEnd),
             ) {
                 Text(

@@ -52,6 +52,32 @@ PYTHONPATH=service .venv/bin/python -m agentpulse_service \
 The SQLite store defaults to `~/.local/state/agentpulse/agentpulse.db` (override with `--db-path` or `$AGENTPULSE_DB_PATH`).
 Host and port can also be set via `AGENTPULSE_HOST` / `HOST` and `AGENTPULSE_PORT` / `PORT`.
 
+## Three-tier classification & configuration
+
+AgentPulse projects the 5-level event severities into 3 presentation tiers:
+- `critical`: mapped from `critical`.
+- `warning`: mapped from `error` and `warning`.
+- `info`: mapped from `info` and `debug`.
+
+Both REST payloads (`/api/v1/events`, `/api/v1/overview`, `/api/v1/alerts`) and WebSocket messages expose the `tier` field.
+The mapping is overridable without modifying code via the `AGENTPULSE_TIER_MAPPING_PATH` environment variable.
+Set `AGENTPULSE_TIER_MAPPING_PATH` to the path of a JSON override file.
+Example JSON configuration:
+
+```json
+{
+  "critical": "critical",
+  "error": "warning",
+  "warning": "warning",
+  "info": "info",
+  "debug": "info"
+}
+```
+
+The service validates that keys are valid severities (`debug`, `info`, `warning`, `error`, `critical`) and values are valid tiers (`info`, `warning`, `critical`).
+When the configured file is missing, contains malformed JSON, or names an unknown severity or tier, the service logs a warning and falls back to the built-in default mapping.
+
+
 ## LAN binding & Android access
 
 Under WSL2 mirrored networking mode, binding to `0.0.0.0` exposes the port directly to the local area network.

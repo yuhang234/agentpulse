@@ -91,6 +91,48 @@ enum class Severity {
     }
 }
 
+/** 事件与告警的三层展示阶梯（Three-Tier projection）。 */
+@Serializable
+enum class PulseTier {
+    @SerialName("info") Info,
+    @SerialName("warning") Warning,
+    @SerialName("critical") Critical,
+    @SerialName("unknown") Unknown;
+
+    val labelZh: String
+        get() = when (this) {
+            Critical -> "严重"
+            Warning -> "警告"
+            Info -> "信息"
+            Unknown -> "未知"
+        }
+
+    val code: String
+        get() = when (this) {
+            Critical -> "CRITICAL"
+            Warning -> "WARNING"
+            Info -> "INFO"
+            Unknown -> "UNKNOWN"
+        }
+
+    companion object {
+        fun fromWire(raw: String?, fallbackSeverity: Severity = Severity.Unknown): PulseTier {
+            val normalized = raw?.trim()?.lowercase()
+            return when (normalized) {
+                "critical" -> Critical
+                "warning" -> Warning
+                "info" -> Info
+                else -> when (fallbackSeverity) {
+                    Severity.Critical -> Critical
+                    Severity.Warning, Severity.Error -> Warning
+                    Severity.Info, Severity.Debug -> Info
+                    else -> Info
+                }
+            }
+        }
+    }
+}
+
 /**
  * Event 实体（统一事件流）—— 报告 2.2.C。
  *
@@ -108,10 +150,18 @@ data class PulseEvent(
     val source: EventSource = EventSource.Unknown,
     val kind: EventKind = EventKind.Unknown,
     val severity: String = "info",
+    val tier: String = "",
     val timestamp: String? = null,
     val payload: JsonObject = JsonObject(emptyMap()),
 ) {
     val severityLevel: Severity get() = Severity.fromWire(severity)
+
+    val tierLevel: PulseTier
+        get() = if (tier.isNotBlank()) {
+            PulseTier.fromWire(tier, severityLevel)
+        } else {
+            PulseTier.fromWire(null, severityLevel)
+        }
 
     val epochMillis: Long? get() = TimeFormat.parseToEpochMillis(timestamp)
 

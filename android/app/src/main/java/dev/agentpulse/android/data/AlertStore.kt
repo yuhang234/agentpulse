@@ -136,6 +136,7 @@ class AlertStore(
             alertId = LOCAL_DISCONNECT_ID,
             category = AlertCategory.ServiceDisconnected,
             severity = Severity.Warning,
+            tier = "warning",
             title = "连接不稳定",
             message = "与 AgentPulse 监控服务的心跳中断，正在保持同步…",
             createdAt = at,
@@ -147,6 +148,7 @@ class AlertStore(
             alertId = LOCAL_DISCONNECT_ID,
             category = AlertCategory.ServiceDisconnected,
             severity = Severity.Critical,
+            tier = "critical",
             title = "服务断开连接",
             message = "已静默 ${silenceSeconds}s，后台正在按指数退避重连。",
             suggestedActions = listOf(

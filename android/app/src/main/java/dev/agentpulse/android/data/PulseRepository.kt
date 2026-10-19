@@ -176,6 +176,16 @@ class PulseRepository(
         scope.launch { publish() }
     }
 
+    /** 主动触发一条本地告警（例如测试通知）。 */
+    fun raiseAlert(alert: PulseAlert) {
+        scope.launch {
+            val raised = locked { alertStore.merge(listOf(alert)) }
+            if (raised.isNotEmpty()) {
+                _raisedAlerts.tryEmit(raised)
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ 数据面刷新
 
     private suspend fun refreshHealth() {
@@ -540,6 +550,7 @@ class PulseRepository(
                 taskId = event.taskId,
                 category = AlertCategory.DecisionRequired,
                 severity = Severity.Critical,
+                tier = if (event.tier.isNotBlank()) event.tier else "critical",
                 title = "等待人工决策",
                 message = event.payloadString("summary")
                     ?: event.payloadString("question")
@@ -561,6 +572,7 @@ class PulseRepository(
                 taskId = event.taskId,
                 category = AlertCategory.TaskFailed,
                 severity = Severity.Critical,
+                tier = if (event.tier.isNotBlank()) event.tier else "critical",
                 title = "任务失败",
                 message = event.payloadString("reason")
                     ?: event.payloadString("message")
@@ -582,6 +594,7 @@ class PulseRepository(
                         taskId = event.taskId,
                         category = AlertCategory.AgentUnresponsive,
                         severity = Severity.Warning,
+                        tier = if (event.tier.isNotBlank()) event.tier else "warning",
                         title = "Agent 进入阻塞",
                         message = "窗格 ${event.paneId ?: event.payloadString("pane_id") ?: "未知"} 状态流转为 BLOCKED。",
                         createdAt = event.timestamp ?: nowIso(now),

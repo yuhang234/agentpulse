@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.agentpulse.android.data.PulseRepository
 import dev.agentpulse.android.data.PulseUiState
+import dev.agentpulse.android.data.SettingsStore
 import dev.agentpulse.android.data.TransportSettings
 import dev.agentpulse.android.data.model.PulseTask
 import dev.agentpulse.android.data.model.TerminalOutput
@@ -29,9 +30,32 @@ enum class PulseTab(val label: String) {
  */
 class AppViewModel(
     private val repository: PulseRepository,
+    private val settingsStore: SettingsStore? = null,
 ) : ViewModel() {
 
     val uiState: StateFlow<PulseUiState> = repository.uiState
+
+    val isMuted: StateFlow<Boolean> = settingsStore?.isMuted ?: MutableStateFlow(false)
+
+    fun setMuted(muted: Boolean) {
+        settingsStore?.setMuted(muted)
+    }
+
+    fun fireTestCriticalAlert() {
+        val nowMs = System.currentTimeMillis()
+        val testAlert = dev.agentpulse.android.data.model.PulseAlert(
+            alertId = "local:test_critical_$nowMs",
+            category = dev.agentpulse.android.data.model.AlertCategory.DecisionRequired,
+            severity = dev.agentpulse.android.data.model.Severity.Critical,
+            tier = "critical",
+            title = "测试告警 (Critical)",
+            message = "这是一条测试通知。声音、震动、系统通知与应用内横幅均应生效。",
+            createdAt = java.time.Instant.ofEpochMilli(nowMs).toString(),
+            status = dev.agentpulse.android.data.model.AlertStatus.Active,
+            suggestedActions = listOf("确认声音与震动正常运作"),
+        )
+        repository.raiseAlert(testAlert)
+    }
 
     private val _selectedTab = MutableStateFlow(PulseTab.Overview)
     val selectedTab: StateFlow<PulseTab> = _selectedTab.asStateFlow()
@@ -109,7 +133,7 @@ class AppViewModel(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    AppViewModel(container.repository) as T
+                    AppViewModel(container.repository, container.settings) as T
             }
     }
 }

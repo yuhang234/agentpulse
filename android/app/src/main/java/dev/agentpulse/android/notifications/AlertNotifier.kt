@@ -6,35 +6,45 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.agentpulse.android.MainActivity
 import dev.agentpulse.android.R
+import dev.agentpulse.android.data.SettingsStore
 import dev.agentpulse.android.data.model.PulseAlert
-import dev.agentpulse.android.data.model.Severity
 
 /**
- * Notification policy of design report 4.4. Explicit severity -> channel mapping:
+ * Three-tier alert notifier:
  *
- * | severity  | channel              | behaviour                                              |
- * |-----------|----------------------|--------------------------------------------------------|
- * | CRITICAL  | agentpulse_critical  | heads-up banner + vibration + badge (IMPORTANCE_HIGH)   |
- * | WARNING / | agentpulse_warning   | silent (IMPORTANCE_LOW): no sound, no heads-up, badge  |
- * | ERROR     |                      |                                                        |
- * | INFO/DEBUG| none                 | feed-only; never leaves a system notification           |
+ * - CRITICAL: sound, vibration, Android system notification on [CHANNEL_CRITICAL] (IMPORTANCE_HIGH).
+ * - WARNING: silent badge or count in the UI only. Suppressed from system notifications.
+ * - INFO: live event feed only. Suppressed from system notifications.
  *
- * Only alerts are ever notified, and alerts are only derived for CRITICAL/WARNING/ERROR situations,
- * so INFO/DEBUG events stay in the live feed with zero interruption.
+ * Rate limiting & deduplication via [AlertRateLimiter]:
+ * - Same alert is never alerted twice.
+ * - Critical bursts close together collapse into a single alert with count.
  */
-class AlertNotifier(private val context: Context) {
+class AlertNotifier(
+    private val context: Context,
+    private val settingsStore: SettingsStore? = null,
+    val rateLimiter: AlertRateLimiter = AlertRateLimiter(),
+) {
 
     private val manager = NotificationManagerCompat.from(context)
 
     fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val system = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
 
         val critical = NotificationChannel(
             CHANNEL_CRITICAL,
@@ -43,9 +53,11 @@ class AlertNotifier(private val context: Context) {
         ).apply {
             description = context.getString(R.string.notif_channel_critical_desc)
             enableVibration(true)
+            vibrationPattern = longArrayOf(0, 350, 200, 350)
             enableLights(true)
             lightColor = 0xFFF43F5E.toInt()
             setShowBadge(true)
+            setSound(soundUri, audioAttributes)
         }
 
         val warning = NotificationChannel(
@@ -62,51 +74,88 @@ class AlertNotifier(private val context: Context) {
         system.createNotificationChannels(listOf(critical, warning))
     }
 
-    /** Maps one alert to its channel and posts it, if the user granted POST_NOTIFICATIONS. */
+    /**
+     * Dispatch an alert through rate limiting and deduplication.
+     * Posts a system notification only for CRITICAL alerts when not muted.
+     */
     fun notify(alert: PulseAlert) {
+        if (settingsStore?.isMuted() == true) return
         if (!hasPermission()) return
-        val channel = when (alert.severity) {
-            Severity.Critical -> CHANNEL_CRITICAL
-            Severity.Warning, Severity.Error -> CHANNEL_WARNING
-            else -> return // feed-only severity: never notify
-        }
-        val priority = if (channel == CHANNEL_CRITICAL) {
-            NotificationCompat.PRIORITY_HIGH
-        } else {
-            NotificationCompat.PRIORITY_LOW
-        }
 
+        when (val decision = rateLimiter.process(alert)) {
+            is AlertDispatchDecision.DropDuplicate -> return
+            is AlertDispatchDecision.SuppressNonCritical -> return
+
+            is AlertDispatchDecision.Immediate -> {
+                postCriticalNotification(
+                    id = NOTIFICATION_ID_CRITICAL,
+                    title = decision.alert.title,
+                    message = decision.alert.message,
+                    taskId = decision.alert.taskId,
+                    alertOnce = false,
+                )
+            }
+
+            is AlertDispatchDecision.Collapsed -> {
+                postCriticalNotification(
+                    id = NOTIFICATION_ID_CRITICAL,
+                    title = "${decision.count} 条严重告警",
+                    message = "${decision.latestAlert.title} · ${decision.latestAlert.message}",
+                    taskId = decision.latestAlert.taskId,
+                    alertOnce = true,
+                    subText = "${decision.count} 条告警",
+                )
+            }
+        }
+    }
+
+    private fun postCriticalNotification(
+        id: Int,
+        title: String,
+        message: String,
+        taskId: String?,
+        alertOnce: Boolean,
+        subText: String? = null,
+    ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_ALERTS)
         }
         val pending = PendingIntent.getActivity(
             context,
-            alert.alertId.hashCode(),
+            id,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, channel)
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val vibrationPattern = longArrayOf(0, 350, 200, 350)
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_CRITICAL)
             .setSmallIcon(R.drawable.ic_stat_pulse)
-            .setContentTitle(alert.title)
-            .setContentText(alert.message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(alert.message))
-            .setPriority(priority)
-            .setCategory(if (alert.severity == Severity.Critical) NotificationCompat.CATEGORY_ERROR else NotificationCompat.CATEGORY_STATUS)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
             .setAutoCancel(true)
+            .setSound(soundUri)
+            .setVibrate(vibrationPattern)
+            .setOnlyAlertOnce(alertOnce)
             .setContentIntent(pending)
-            .apply {
-                if (alert.taskId != null) {
-                    addAction(0, alert.taskId, pending)
-                }
-            }
-            .build()
+
+        if (!subText.isNullOrBlank()) {
+            builder.setSubText(subText)
+        }
+
+        if (taskId != null) {
+            builder.addAction(0, taskId, pending)
+        }
 
         try {
-            manager.notify(alert.alertId.hashCode(), notification)
+            manager.notify(id, builder.build())
         } catch (_: SecurityException) {
-            // Permission revoked between the check and the post; ignore.
+            // Permission revoked between check and post.
         }
     }
 
@@ -119,5 +168,6 @@ class AlertNotifier(private val context: Context) {
     companion object {
         const val CHANNEL_CRITICAL = "agentpulse_critical"
         const val CHANNEL_WARNING = "agentpulse_warning"
+        const val NOTIFICATION_ID_CRITICAL = 7891
     }
 }

@@ -74,7 +74,9 @@ def create_app(monitor: Monitor, lifespan: Any | None = None) -> FastAPI:
         tasks = world.tasks()
         active = [t.to_overview() for t in tasks if t.state == "in_flight"]
         critical = [
-            a.to_dict() for a in world.alerts(status="active") if a.severity == "critical"
+            a.to_dict()
+            for a in world.alerts(status="active")
+            if a.severity == "critical" or a.tier == "critical"
         ]
         return {
             "generated_at": iso_now(),
@@ -83,6 +85,20 @@ def create_app(monitor: Monitor, lifespan: Any | None = None) -> FastAPI:
             "pending_decisions": world.decisions(),
             "critical_alerts": critical,
         }
+
+    # -- alerts ----------------------------------------------------------
+
+    @app.get("/api/v1/alerts")
+    async def alerts(
+        status: str | None = Query(default="active"),
+        tier: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        wanted_status = None if status == "all" else (status or "active")
+        rows = world.alerts(status=wanted_status)
+        if tier:
+            wanted_tier = tier.strip().lower()
+            rows = [a for a in rows if a.tier == wanted_tier]
+        return {"total": len(rows), "alerts": [a.to_dict() for a in rows]}
 
     # -- tasks -----------------------------------------------------------
 

@@ -20,6 +20,7 @@ import dev.agentpulse.android.core.PulseTime
 import dev.agentpulse.android.data.PulseUiState
 import dev.agentpulse.android.data.model.AlertCategory
 import dev.agentpulse.android.data.model.PulseAlert
+import dev.agentpulse.android.data.model.PulseTier
 import dev.agentpulse.android.ui.common.CopyAction
 import dev.agentpulse.android.ui.common.EmptyState
 import dev.agentpulse.android.ui.common.PulseCard
@@ -65,6 +66,20 @@ fun AlertsScreen(
                 color = PulseColors.TextPrimary,
                 modifier = Modifier.weight(1f),
             )
+            if (state.warningAlertCount > 0) {
+                PulseTag(
+                    text = "关注 ${state.warningAlertCount}",
+                    color = PulseColors.WarningAmber,
+                )
+                Spacer(Modifier.padding(start = PulseSpacing.xs))
+            }
+            if (state.criticalAlertCount > 0) {
+                PulseTag(
+                    text = "紧急 ${state.criticalAlertCount}",
+                    color = PulseColors.ErrorRose,
+                )
+                Spacer(Modifier.padding(start = PulseSpacing.xs))
+            }
             if (alerts.isNotEmpty()) {
                 TextButton(onClick = onClearRead) {
                     Text("清空已读", color = PulseColors.PrimaryCyan)
@@ -104,8 +119,16 @@ fun AlertsScreen(
 @Composable
 private fun AlertCard(alert: PulseAlert, onOpen: (String) -> Unit) {
     val accent = severityColor(alert.severity)
+    val tierColor = when (alert.tierLevel) {
+        PulseTier.Critical -> PulseColors.ErrorRose
+        PulseTier.Warning -> PulseColors.WarningAmber
+        PulseTier.Info -> PulseColors.PrimaryCyan
+        PulseTier.Unknown -> PulseColors.TextSecondary
+    }
     PulseCard(onClick = { onOpen(alert.alertId) }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            PulseTag(text = alert.tier.uppercase(), color = tierColor)
+            Spacer(Modifier.padding(start = PulseSpacing.xs))
             PulseTag(text = alert.category.code, color = accent)
             Spacer(Modifier.weight(1f))
             Text(

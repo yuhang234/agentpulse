@@ -384,6 +384,52 @@ private fun ConnectionBanner(
     }
 }
 
+/**
+ * In-app banner for active Critical tier alerts (Captain's intent).
+ * Prominently displayed across all screens with direct navigation to the alert.
+ */
+@Composable
+fun CriticalAlertBanner(
+    alerts: List<dev.agentpulse.android.data.model.PulseAlert>,
+    onOpenAlerts: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (alerts.isEmpty()) return
+    val latest = alerts.first()
+    val count = alerts.size
+    val headline = if (count == 1) {
+        "【严重告警】${latest.title}：${latest.message}"
+    } else {
+        "【严重告警 · ${count} 条待处理】最新：${latest.title}"
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenAlerts),
+        color = PulseColors.ErrorRose.copy(alpha = 0.25f),
+        border = BorderStroke(1.dp, PulseColors.ErrorRose.copy(alpha = 0.6f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = PulseSpacing.md, vertical = PulseSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+        ) {
+            PulseStatusDot(color = PulseColors.ErrorRose, animated = true, size = 10.dp)
+            Text(
+                text = headline,
+                style = MaterialTheme.typography.bodySmall,
+                color = PulseColors.ErrorRose,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            PulseTag(text = "查看 ➜", color = PulseColors.ErrorRose, filled = true)
+        }
+    }
+}
+
+
 // ---------------------------------------------------------------- clipboard
 
 /** Copy-to-clipboard affordance (alerts screen "复制指令", terminal blocks). */

@@ -144,6 +144,16 @@ class SettingsStore(context: Context) {
         prefs.edit().putStringSet(KEY_ACK_ALERTS, ids).apply()
     }
 
+    private val _muted = MutableStateFlow(prefs.getBoolean(KEY_MUTED, false))
+    val isMuted: StateFlow<Boolean> = _muted.asStateFlow()
+
+    fun isMuted(): Boolean = _muted.value
+
+    fun setMuted(muted: Boolean) {
+        prefs.edit().putBoolean(KEY_MUTED, muted).apply()
+        _muted.value = muted
+    }
+
     private fun load(): TransportSettings {
         val defaults = TransportSettings()
         return TransportSettings(
@@ -165,5 +175,6 @@ class SettingsStore(context: Context) {
         const val KEY_TLS = "use_tls"
         const val KEY_CLIENT_ID = "client_id"
         const val KEY_ACK_ALERTS = "acknowledged_alerts"
+        const val KEY_MUTED = "is_muted"
     }
 }
