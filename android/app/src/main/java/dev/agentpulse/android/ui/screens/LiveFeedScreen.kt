@@ -27,6 +27,7 @@ import dev.agentpulse.android.data.DataPhase
 import dev.agentpulse.android.data.PulseUiState
 import dev.agentpulse.android.data.model.EventKind
 import dev.agentpulse.android.data.model.PulseEvent
+import dev.agentpulse.android.data.model.PulseTier
 import dev.agentpulse.android.ui.common.EmptyState
 import dev.agentpulse.android.ui.common.ErrorState
 import dev.agentpulse.android.ui.common.LoadingState
@@ -130,6 +131,18 @@ fun LiveFeedScreen(
 @Composable
 private fun EventRow(event: PulseEvent) {
     val accent = severityColor(event.severityLevel)
+    val tierColor = when (event.tierLevel) {
+        PulseTier.Critical -> PulseColors.ErrorRose
+        PulseTier.Warning -> PulseColors.WarningAmber
+        PulseTier.Info -> PulseColors.TextMuted
+        PulseTier.Unknown -> PulseColors.TextMuted
+    }
+    val tierLabel = when (event.tierLevel) {
+        PulseTier.Critical -> "[CRITICAL]"
+        PulseTier.Warning -> "[WARN]"
+        PulseTier.Info -> "[INFO]"
+        PulseTier.Unknown -> "[${event.tier.uppercase()}]"
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -137,7 +150,13 @@ private fun EventRow(event: PulseEvent) {
                 style = PulseMonoText.chip,
                 color = PulseColors.TextMuted,
             )
-            Spacer(Modifier.padding(start = PulseSpacing.sm))
+            Spacer(Modifier.padding(start = PulseSpacing.xs))
+            Text(
+                text = tierLabel,
+                style = PulseMonoText.chip,
+                color = tierColor,
+            )
+            Spacer(Modifier.padding(start = PulseSpacing.xs))
             Text(
                 text = eventTag(event.source, event.kind),
                 style = PulseMonoText.chip,

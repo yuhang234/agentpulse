@@ -175,6 +175,13 @@ class Event:
     task_id: str | None = None
     pane_id: str | None = None
     payload: dict[str, Any] = field(default_factory=dict)
+    tier: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.tier is None:
+            from .severity import tier_for_severity
+
+            self.tier = tier_for_severity(self.severity)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -185,6 +192,7 @@ class Event:
             "source": self.source,
             "kind": self.kind,
             "severity": self.severity,
+            "tier": self.tier,
             "timestamp": self.timestamp,
             "payload": dict(self.payload),
         }
@@ -204,6 +212,13 @@ class Alert:
     task_id: str | None = None
     key: str | None = None
     suggested_actions: list[str] = field(default_factory=list)
+    tier: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.tier is None:
+            from .severity import tier_for_severity
+
+            self.tier = tier_for_severity(self.severity)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -211,6 +226,7 @@ class Alert:
             "task_id": self.task_id,
             "category": self.category,
             "severity": self.severity,
+            "tier": self.tier,
             "title": self.title,
             "message": self.message,
             "key": self.key,

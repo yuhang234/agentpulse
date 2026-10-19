@@ -20,7 +20,7 @@ class AppContainer(context: Context) {
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val settings = SettingsStore(context)
-    val notifier = AlertNotifier(context)
+    val notifier = AlertNotifier(context, settingsStore = settings)
 
     private val httpClient = HttpClientFactory.create()
     private val api = AgentPulseApi(httpClient, settingsProvider = { settings.current() })

@@ -18,6 +18,7 @@ from .models import (
     Alert,
     Event,
 )
+from .severity import tier_for_severity
 from .util import iso_utc, stable_id
 from .world import World
 
@@ -106,6 +107,7 @@ class AlertEngine:
             existing.message = message
             existing.title = title
             existing.severity = severity
+            existing.tier = tier_for_severity(severity)
             existing.suggested_actions = list(actions or [])
             self.world.upsert_alert(existing)
             return existing

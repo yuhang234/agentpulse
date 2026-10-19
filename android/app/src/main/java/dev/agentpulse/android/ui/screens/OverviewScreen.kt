@@ -74,6 +74,7 @@ fun OverviewScreen(
                     queuedCount = overview?.metrics?.queuedTasksCount ?: 0,
                     completedCount = overview?.metrics?.completedTasksCount ?: 0,
                     alertCount = state.pendingAlertCount,
+                    hasCritical = state.criticalAlertCount > 0,
                 )
             }
 
@@ -149,6 +150,7 @@ private fun SystemStatusCard(
     queuedCount: Int,
     completedCount: Int,
     alertCount: Int,
+    hasCritical: Boolean = false,
 ) {
     val color = connectionColor(connection)
     PulseCard {
@@ -165,10 +167,15 @@ private fun SystemStatusCard(
             MetricCell("在飞任务", activeCount, PulseColors.PrimaryCyan, Modifier.weight(1f))
             MetricCell("排队就绪", queuedCount, PulseColors.TextPrimary, Modifier.weight(1f))
             MetricCell("已完成", completedCount, PulseColors.SuccessGreen, Modifier.weight(1f))
+            val alertCellColor = if (alertCount > 0) {
+                if (hasCritical) PulseColors.ErrorRose else PulseColors.WarningAmber
+            } else {
+                PulseColors.SuccessGreen
+            }
             MetricCell(
                 "异常告警",
                 alertCount,
-                if (alertCount > 0) PulseColors.ErrorRose else PulseColors.SuccessGreen,
+                alertCellColor,
                 Modifier.weight(1f),
             )
         }

@@ -56,6 +56,7 @@ data class PulseAlert(
     @SerialName("task_id") val taskId: String? = null,
     val category: AlertCategory = AlertCategory.Unknown,
     val severity: Severity = Severity.Unknown,
+    val tier: String = "",
     val title: String = "",
     val message: String = "",
     val key: String? = null,
@@ -63,6 +64,13 @@ data class PulseAlert(
     @SerialName("created_at") val createdAt: String? = null,
     val status: AlertStatus = AlertStatus.Active,
 ) {
+    val tierLevel: PulseTier
+        get() = if (tier.isNotBlank()) {
+            PulseTier.fromWire(tier, severity)
+        } else {
+            PulseTier.fromWire(null, severity)
+        }
+
     val epochMillis: Long? get() = TimeFormat.parseToEpochMillis(createdAt)
 
     /** 只读版本：界面上提供「复制指令」按钮，但绝不代执行（报告 4.3 屏 4 核心职能）。 */

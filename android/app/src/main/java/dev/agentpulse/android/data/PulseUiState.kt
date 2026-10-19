@@ -60,10 +60,14 @@ data class PulseUiState(
     val activeTasks: List<PulseTask> get() = tasks.filter { it.state == dev.agentpulse.android.data.model.TaskState.InFlight }
     val queuedTasks: List<PulseTask> get() = tasks.filter { it.state == dev.agentpulse.android.data.model.TaskState.Queued }
 
-    /** 「异常」Tab 的琥珀色角标计数（报告 4.3 屏 4 / 4.4.2）。 */
+    /** 「异常」Tab 的角标计数（报告 4.3 屏 4 / 4.4.2）。 */
     val pendingAlertCount: Int get() = alerts.count { it.needsAttention }
 
-    val criticalAlertCount: Int get() = alerts.count { it.needsAttention && it.severity.name == "Critical" }
+    val criticalAlerts: List<PulseAlert> get() = alerts.filter { it.needsAttention && it.tierLevel == dev.agentpulse.android.data.model.PulseTier.Critical }
+    val warningAlerts: List<PulseAlert> get() = alerts.filter { it.needsAttention && it.tierLevel == dev.agentpulse.android.data.model.PulseTier.Warning }
+
+    val criticalAlertCount: Int get() = criticalAlerts.size
+    val warningAlertCount: Int get() = warningAlerts.size
 
     /** 当前最大事件 seq，即下次增量同步游标。 */
     val maxSeq: Long get() = events.maxOfOrNull { it.seq } ?: 0L

@@ -143,6 +143,8 @@ def test_events_cursor(make_monitor, settings):
     assert body["since_seq"] == 1
     assert body["max_seq"] == 3
     assert [e["seq"] for e in body["events"]] == [2, 3]
+    assert all("tier" in e for e in body["events"])
+    assert body["events"][0]["tier"] == "info"
     assert body["has_more"] is False
 
 
@@ -184,6 +186,8 @@ def test_websocket_replay_resume_and_ping_pong(make_monitor, settings):
             assert types[-1] == "live_ready"
             replay = [m for m in messages if m["type"] == "replay"]
             assert len(replay) == 3  # the three pre-seeded events
+            assert all("tier" in m["data"] for m in replay)
+            assert all(m["data"]["tier"] == "info" for m in replay)
 
             ready = messages[-1]
             assert ready["since_seq"] == 3
@@ -198,3 +202,45 @@ def test_websocket_replay_resume_and_ping_pong(make_monitor, settings):
             first = ws.receive_json()
             assert first["type"] == "live_ready"
             assert first["since_seq"] == 3
+
+
+def test_alerts_endpoint_and_overview_tier(make_monitor, settings):
+    from agentpulse_service.models import Alert
+
+    client, _m, _s, _b, world = _client(make_monitor, settings)
+    world.upsert_alert(
+        Alert(
+            alert_id="a-crit",
+            category="task_failed",
+            severity="critical",
+            title="Failed",
+            message="Boom",
+            created_at="2026-10-18T09:00:00Z",
+        )
+    )
+    world.upsert_alert(
+        Alert(
+            alert_id="a-warn",
+            category="pipeline_blocked",
+            severity="warning",
+            title="Blocked",
+            message="Waiting",
+            created_at="2026-10-18T09:01:00Z",
+        )
+    )
+
+    with client:
+        overview = client.get("/api/v1/overview").json()
+        assert len(overview["critical_alerts"]) == 1
+        crit = overview["critical_alerts"][0]
+        assert crit["alert_id"] == "a-crit"
+        assert crit["tier"] == "critical"
+
+        alerts_all = client.get("/api/v1/alerts").json()
+        assert alerts_all["total"] == 2
+        tiers = {a["alert_id"]: a["tier"] for a in alerts_all["alerts"]}
+        assert tiers == {"a-crit": "critical", "a-warn": "warning"}
+
+        alerts_crit = client.get("/api/v1/alerts", params={"tier": "critical"}).json()
+        assert alerts_crit["total"] == 1
+        assert alerts_crit["alerts"][0]["tier"] == "critical"

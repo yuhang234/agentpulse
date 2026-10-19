@@ -12,6 +12,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -19,8 +21,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -164,10 +169,11 @@ fun AlertSheet(alert: PulseAlert, onDismiss: () -> Unit) {
 
 // ---------------------------------------------------------------- settings
 
-/** Settings surface: host / port / socket path / api prefix, with save + reset-to-default. */
+/** Settings surface: host / port / socket path / api prefix, test notification, mute switch, with save + reset-to-default. */
 @Composable
 fun SettingsDialog(viewModel: AppViewModel) {
     val transport = viewModel.uiState.collectAsState().value.transport
+    val isMuted by viewModel.isMuted.collectAsState()
 
     var host by remember { mutableStateOf(transport.host) }
     var port by remember { mutableStateOf(transport.port.toString()) }
@@ -176,9 +182,46 @@ fun SettingsDialog(viewModel: AppViewModel) {
 
     AlertDialog(
         onDismissRequest = viewModel::closeSettings,
-        title = { Text("连接设置", color = PulseColors.TextPrimary) },
+        title = { Text("系统与连接设置", color = PulseColors.TextPrimary) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(PulseSpacing.sm),
+            ) {
+                SectionHeader(title = "分级告警测试")
+                Text(
+                    text = "无需等待真正故障，点击即可测试 Critical 告警（声音、震动、系统通知与应用内横幅）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PulseColors.TextMuted,
+                )
+                Button(
+                    onClick = { viewModel.fireTestCriticalAlert() },
+                    colors = ButtonDefaults.buttonColors(containerColor = PulseColors.ErrorRose),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("测试通知（响铃与震动）", color = Color.White)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = PulseSpacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("静音模式", style = MaterialTheme.typography.bodyMedium, color = PulseColors.TextPrimary)
+                        Text("静音所有通知声音与震动", style = MaterialTheme.typography.bodySmall, color = PulseColors.TextMuted)
+                    }
+                    Switch(
+                        checked = isMuted,
+                        onCheckedChange = { viewModel.setMuted(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = PulseColors.PrimaryCyan,
+                            checkedTrackColor = PulseColors.PrimaryCyan.copy(alpha = 0.5f),
+                        ),
+                    )
+                }
+
+                Spacer(Modifier.padding(vertical = PulseSpacing.xs))
+                SectionHeader(title = "连接设置")
                 Text(
                     text = "监控服务地址（局域网直连如 192.168.x.x:7890，或本地隧道 127.0.0.1:7890）",
                     style = MaterialTheme.typography.bodySmall,
