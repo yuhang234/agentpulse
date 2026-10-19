@@ -1,0 +1,563 @@
+#!/usr/bin/env bash
+# AgentPulse Command Line Interface
+# Controls the FastAPI monitoring service (port 7890) and APK download server (port 7891)
+set -euo pipefail
+
+DEFAULT_INSTALL_DIR="${HOME}/.local/share/agentpulse"
+INSTALL_DIR="${AGENTPULSE_INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}"
+BIN_DIR="${HOME}/.local/bin"
+
+SERVICE_DIR="${INSTALL_DIR}/service"
+VENV_DIR="${INSTALL_DIR}/.venv"
+RUN_DIR="${INSTALL_DIR}/run"
+LOG_DIR="${INSTALL_DIR}/logs"
+CONFIG_DIR="${INSTALL_DIR}/config"
+DOWNLOAD_DIR="${INSTALL_DIR}/download"
+
+SERVICE_PID_FILE="${RUN_DIR}/service.pid"
+DOWNLOAD_PID_FILE="${RUN_DIR}/download.pid"
+SERVICE_PORT_FILE="${RUN_DIR}/service.port"
+DOWNLOAD_PORT_FILE="${RUN_DIR}/download.port"
+ALLOWED_IP_FILE="${CONFIG_DIR}/allowed-ip"
+
+DEFAULT_SERVICE_PORT=7890
+DEFAULT_DOWNLOAD_PORT=7891
+SERVICE_PORT="${AGENTPULSE_PORT:-$DEFAULT_SERVICE_PORT}"
+DOWNLOAD_PORT="${AGENTPULSE_DOWNLOAD_PORT:-$DEFAULT_DOWNLOAD_PORT}"
+NFT_TABLE="${AGENTPULSE_NFT_TABLE:-agentpulse}"
+
+SUDO=""
+PORT_OCCUPANT_INFO=""
+
+ensure_dirs() {
+    mkdir -p "$RUN_DIR" "$LOG_DIR" "$CONFIG_DIR" "$DOWNLOAD_DIR"
+}
+
+check_sudo() {
+    if [ "$(id -u)" -ne 0 ]; then
+        if ! sudo -n true 2>/dev/null; then
+            echo "错误: 执行该操作需要 root 权限，但 'sudo -n' 免密不可用。" >&2
+            echo "提示: 请配置当前用户免密 sudo 或使用 root 权限运行该命令。" >&2
+            return 1
+        fi
+        SUDO="sudo -n"
+    else
+        SUDO=""
+    fi
+    return 0
+}
+
+get_port_occupant() {
+    local port="$1"
+    PORT_OCCUPANT_INFO=""
+    local line
+    line=$(ss -ltnp "sport = :$port" 2>/dev/null | tail -n +2 | head -n 1)
+    if [ -n "$line" ]; then
+        local user_proc
+        user_proc=$(echo "$line" | grep -o 'users:(([^)]*))' || true)
+        if [ -n "$user_proc" ]; then
+            local proc_name pid
+            proc_name=$(echo "$user_proc" | sed -E 's/.*"([^"]+)".*/\1/')
+            pid=$(echo "$user_proc" | sed -E 's/.*pid=([0-9]+).*/\1/')
+            PORT_OCCUPANT_INFO="进程 '${proc_name}', PID ${pid}"
+        else
+            PORT_OCCUPANT_INFO="$line"
+        fi
+        return 0
+    fi
+    return 1
+}
+
+is_service_process() {
+    local pid="$1"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        return 1
+    fi
+    local cmd
+    cmd=$(ps -p "$pid" -o args= 2>/dev/null || true)
+    if echo "$cmd" | grep -q -E "agentpulse_service|uvicorn.*agentpulse"; then
+        return 0
+    fi
+    return 1
+}
+
+is_download_process() {
+    local pid="$1"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        return 1
+    fi
+    local cmd
+    cmd=$(ps -p "$pid" -o args= 2>/dev/null || true)
+    if echo "$cmd" | grep -q "http.server"; then
+        return 0
+    fi
+    return 1
+}
+
+stop_process() {
+    local pid="$1"
+    local name="$2"
+    local pid_file="$3"
+    
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$pid_file"
+        return 0
+    fi
+    
+    echo "正在停止 ${name} (PID: ${pid})..."
+    kill -TERM "$pid" 2>/dev/null || true
+    
+    local count=0
+    while kill -0 "$pid" 2>/dev/null && [ "$count" -lt 25 ]; do
+        sleep 0.2
+        count=$((count + 1))
+    done
+    
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "提示: ${name} 未在 5 秒内退出，发送 SIGKILL..."
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$pid_file"
+}
+
+build_nft_rules() {
+    local table="$1"
+    local s_port="$2"
+    local d_port="$3"
+    local ips=()
+    if [ -f "$ALLOWED_IP_FILE" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line=$(echo "$line" | sed 's/#.*//' | tr -d '[:space:]')
+            if [ -n "$line" ]; then
+                ips+=("$line")
+            fi
+        done < "$ALLOWED_IP_FILE"
+    fi
+    
+    local ip_rule=""
+    if [ ${#ips[@]} -eq 1 ]; then
+        ip_rule="tcp dport $s_port ip saddr ${ips[0]} counter accept"
+    elif [ ${#ips[@]} -gt 1 ]; then
+        local ip_list
+        ip_list=$(IFS=, ; echo "${ips[*]}")
+        ip_rule="tcp dport $s_port ip saddr { $ip_list } counter accept"
+    fi
+    
+    cat <<EOF
+table inet $table {
+    chain input {
+        type filter hook input priority filter; policy accept;
+        ct state established,related accept
+        tcp dport $s_port ip saddr 127.0.0.1 accept
+        $ip_rule
+        tcp dport $d_port accept comment "public APK download"
+        tcp dport { $s_port, $d_port } counter log prefix "agentpulse-block " level info drop
+    }
+}
+EOF
+}
+
+apply_firewall() {
+    check_sudo || return 1
+    local rules
+    rules=$(build_nft_rules "$NFT_TABLE" "$SERVICE_PORT" "$DOWNLOAD_PORT")
+    $SUDO nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+    echo "$rules" | $SUDO nft -f -
+    echo "防火墙: 已成功应用规则表 inet ${NFT_TABLE}。"
+}
+
+clear_firewall() {
+    check_sudo || return 1
+    $SUDO nft delete table inet "$NFT_TABLE" 2>/dev/null || true
+    echo "防火墙: 已清理规则表 inet ${NFT_TABLE}。"
+}
+
+cmd_start() {
+    ensure_dirs
+    
+    # 1. 检查是否已经由 pulse 启动且在运行（幂等性）
+    local service_running=0
+    local download_running=0
+    
+    if [ -f "$SERVICE_PID_FILE" ]; then
+        local spid
+        spid=$(cat "$SERVICE_PID_FILE" 2>/dev/null || true)
+        if is_service_process "$spid"; then
+            service_running=1
+        else
+            rm -f "$SERVICE_PID_FILE" "$SERVICE_PORT_FILE"
+        fi
+    fi
+    
+    if [ -f "$DOWNLOAD_PID_FILE" ]; then
+        local dpid
+        dpid=$(cat "$DOWNLOAD_PID_FILE" 2>/dev/null || true)
+        if is_download_process "$dpid"; then
+            download_running=1
+        else
+            rm -f "$DOWNLOAD_PID_FILE" "$DOWNLOAD_PORT_FILE"
+        fi
+    fi
+    
+    if [ "$service_running" -eq 1 ] && [ "$download_running" -eq 1 ]; then
+        echo "AgentPulse 服务已在运行中，无需重复启动。"
+        cmd_status
+        return 0
+    fi
+    
+    # 2. 检查端口是否被外部进程占用
+    if [ "$service_running" -eq 0 ] && get_port_occupant "$SERVICE_PORT"; then
+        echo "错误: 监控服务端口 ${SERVICE_PORT} 已被占用 (${PORT_OCCUPANT_INFO})。" >&2
+        echo "提示: 请先停止占用该端口的进程，或通过环境变量 AGENTPULSE_PORT 指定其他端口。" >&2
+        return 1
+    fi
+    
+    if [ "$download_running" -eq 0 ] && get_port_occupant "$DOWNLOAD_PORT"; then
+        echo "错误: 下载服务端口 ${DOWNLOAD_PORT} 已被占用 (${PORT_OCCUPANT_INFO})。" >&2
+        echo "提示: 请先停止占用该端口的进程，或通过环境变量 AGENTPULSE_DOWNLOAD_PORT 指定其他端口。" >&2
+        return 1
+    fi
+    
+    # 3. 检查虚拟环境
+    if [ ! -f "$VENV_DIR/bin/uvicorn" ]; then
+        echo "错误: Python 虚拟环境不存在或未安装依赖: ${VENV_DIR}" >&2
+        echo "提示: 请先运行 'pulse install' 完成安装与依赖配置。" >&2
+        return 1
+    fi
+    
+    # 4. 重建防火墙规则
+    apply_firewall
+    
+    # 5. 启动监控服务
+    if [ "$service_running" -eq 0 ]; then
+        PYTHONPATH="${SERVICE_DIR}${PYTHONPATH:+:${PYTHONPATH}}" \
+        AGENTPULSE_HOME="${AGENTPULSE_HOME:-${HOME}/agentpulse/firstmate}" \
+        setsid nohup "${VENV_DIR}/bin/uvicorn" agentpulse_service:app --factory \
+            --host 0.0.0.0 --port "${SERVICE_PORT}" \
+            >> "${LOG_DIR}/service.log" 2>&1 < /dev/null &
+        local spid=$!
+        echo "$spid" > "$SERVICE_PID_FILE"
+        echo "$SERVICE_PORT" > "$SERVICE_PORT_FILE"
+        echo "监控服务: 已启动 (PID: ${spid}, 端口: ${SERVICE_PORT}, 日志: ${LOG_DIR}/service.log)"
+    fi
+    
+    # 6. 启动下载服务
+    if [ "$download_running" -eq 0 ]; then
+        setsid nohup python3 -m http.server "${DOWNLOAD_PORT}" --bind 0.0.0.0 --directory "${DOWNLOAD_DIR}" \
+            >> "${LOG_DIR}/download.log" 2>&1 < /dev/null &
+        local dpid=$!
+        echo "$dpid" > "$DOWNLOAD_PID_FILE"
+        echo "$DOWNLOAD_PORT" > "$DOWNLOAD_PORT_FILE"
+        echo "下载服务: 已启动 (PID: ${dpid}, 端口: ${DOWNLOAD_PORT}, 日志: ${LOG_DIR}/download.log)"
+    fi
+    
+    # 7. 等待服务就绪并健康检查
+    local ready=0
+    for _ in $(seq 1 30); do
+        if curl -s --noproxy '*' -m 1 "http://127.0.0.1:${SERVICE_PORT}/api/v1/health" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.2
+    done
+    
+    local lan_ip
+    lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -n "$lan_ip" ] || lan_ip="127.0.0.1"
+    
+    echo
+    if [ "$ready" -eq 1 ]; then
+        echo "AgentPulse 服务启动成功！"
+    else
+        echo "提示: 服务进程已启动，健康检查正在就绪中..."
+    fi
+    echo "  本机地址:   http://127.0.0.1:${SERVICE_PORT}/api/v1/health"
+    echo "  局域网地址: http://${lan_ip}:${SERVICE_PORT}"
+    echo "  安装包下载: http://${lan_ip}:${DOWNLOAD_PORT}/"
+    echo
+    return 0
+}
+
+cmd_stop() {
+    local stopped_any=0
+    
+    if [ -f "$SERVICE_PID_FILE" ]; then
+        local spid
+        spid=$(cat "$SERVICE_PID_FILE" 2>/dev/null || true)
+        if [ -n "$spid" ]; then
+            if is_service_process "$spid"; then
+                stop_process "$spid" "监控服务" "$SERVICE_PID_FILE"
+                stopped_any=1
+            else
+                echo "提示: PID ${spid} 不存在或不是 AgentPulse 监控服务，清理旧 PID 文件"
+                rm -f "$SERVICE_PID_FILE"
+            fi
+        fi
+        rm -f "$SERVICE_PORT_FILE"
+    fi
+    
+    if [ -f "$DOWNLOAD_PID_FILE" ]; then
+        local dpid
+        dpid=$(cat "$DOWNLOAD_PID_FILE" 2>/dev/null || true)
+        if [ -n "$dpid" ]; then
+            if is_download_process "$dpid"; then
+                stop_process "$dpid" "下载服务" "$DOWNLOAD_PID_FILE"
+                stopped_any=1
+            else
+                echo "提示: PID ${dpid} 不存在或不是 AgentPulse 下载服务，清理旧 PID 文件"
+                rm -f "$DOWNLOAD_PID_FILE"
+            fi
+        fi
+        rm -f "$DOWNLOAD_PORT_FILE"
+    fi
+    
+    clear_firewall
+    
+    if [ "$stopped_any" -eq 1 ]; then
+        echo "AgentPulse 所有服务已停止。"
+    else
+        echo "AgentPulse 服务未在运行。"
+    fi
+    return 0
+}
+
+cmd_restart() {
+    echo "正在重启 AgentPulse..."
+    cmd_stop
+    sleep 0.5
+    cmd_start
+}
+
+cmd_status() {
+    local s_port="${SERVICE_PORT}"
+    if [ -f "$SERVICE_PORT_FILE" ]; then
+        s_port=$(cat "$SERVICE_PORT_FILE" 2>/dev/null || echo "$SERVICE_PORT")
+    fi
+    local d_port="${DOWNLOAD_PORT}"
+    if [ -f "$DOWNLOAD_PORT_FILE" ]; then
+        d_port=$(cat "$DOWNLOAD_PORT_FILE" 2>/dev/null || echo "$DOWNLOAD_PORT")
+    fi
+    
+    echo "================ AgentPulse 状态 ================"
+    
+    # 1. 监控服务进程
+    local s_proc="未运行"
+    if [ -f "$SERVICE_PID_FILE" ]; then
+        local spid
+        spid=$(cat "$SERVICE_PID_FILE" 2>/dev/null || true)
+        if [ -n "$spid" ] && is_service_process "$spid"; then
+            s_proc="运行中 (PID: ${spid})"
+        elif [ -n "$spid" ] && kill -0 "$spid" 2>/dev/null; then
+            s_proc="PID 文件存在但进程不匹配 (PID: ${spid})"
+        fi
+    elif get_port_occupant "$s_port"; then
+        s_proc="外部进程占用 ($PORT_OCCUPANT_INFO)"
+    fi
+    printf "  %-14s: %s\n" "监控服务" "$s_proc"
+    
+    # 2. 下载服务进程
+    local d_proc="未运行"
+    if [ -f "$DOWNLOAD_PID_FILE" ]; then
+        local dpid
+        dpid=$(cat "$DOWNLOAD_PID_FILE" 2>/dev/null || true)
+        if [ -n "$dpid" ] && is_download_process "$dpid"; then
+            d_proc="运行中 (PID: ${dpid})"
+        elif [ -n "$dpid" ] && kill -0 "$dpid" 2>/dev/null; then
+            d_proc="PID 文件存在但进程不匹配 (PID: ${dpid})"
+        fi
+    elif get_port_occupant "$d_port"; then
+        d_proc="外部进程占用 ($PORT_OCCUPANT_INFO)"
+    fi
+    printf "  %-14s: %s\n" "下载服务" "$d_proc"
+    
+    # 3. 端口监听
+    local s_listen="未监听"
+    if ss -ltn "sport = :$s_port" 2>/dev/null | tail -n +2 | grep -q .; then
+        s_listen="0.0.0.0:${s_port} (监听中)"
+    fi
+    local d_listen="未监听"
+    if ss -ltn "sport = :$d_port" 2>/dev/null | tail -n +2 | grep -q .; then
+        d_listen="0.0.0.0:${d_port} (监听中)"
+    fi
+    printf "  %-14s: %s | %-12s: %s\n" "端口 ${s_port}" "$s_listen" "端口 ${d_port}" "$d_listen"
+    
+    # 4. 健康检查
+    local h_code
+    h_code=$(curl -s --noproxy '*' -m 2 -o /dev/null -w "%{http_code}" "http://127.0.0.1:${s_port}/api/v1/health" 2>/dev/null) || h_code="000"
+    local h_status
+    if [ "$h_code" = "200" ]; then
+        h_status="200 OK (正常)"
+    elif [ -z "$h_code" ] || [ "$h_code" = "000" ] || [ "$h_code" = "000000" ]; then
+        h_status="无法连接 (服务未启动或端口不通)"
+    else
+        h_status="${h_code} (异常)"
+    fi
+    printf "  %-14s: %s\n" "健康检查" "$h_status"
+    
+    # 5. 手机连接数量
+    local conn_lines
+    conn_lines=$(ss -tn state established "( sport = :$s_port )" 2>/dev/null | tail -n +2 | grep -v '127\.0\.0\.1' || true)
+    local clients="0 台"
+    if [ -n "$conn_lines" ]; then
+        local ips count
+        ips=$(echo "$conn_lines" | awk '{print $4}' | sed -E 's/:[0-9]+$//' | sort -u | tr '\n' ' ' | sed 's/ $//')
+        count=$(echo "$conn_lines" | awk '{print $4}' | sed -E 's/:[0-9]+$//' | sort -u | wc -l)
+        clients="${count} 台 (${ips})"
+    fi
+    printf "  %-14s: %s\n" "手机连接" "$clients"
+    
+    # 6. 放行 IP
+    local allowed="无 (仅允许本机 loopback)"
+    if [ -f "$ALLOWED_IP_FILE" ]; then
+        local raw
+        raw=$(grep -v '^[[:space:]]*#' "$ALLOWED_IP_FILE" 2>/dev/null | grep -v '^[[:space:]]*$' | tr '\n' ' ' | sed 's/ $//' || true)
+        if [ -n "$raw" ]; then
+            allowed="$raw"
+        fi
+    fi
+    printf "  %-14s: %s\n" "放行 IP" "$allowed"
+    
+    # 7. 防火墙规则摘要
+    local nft_summary="未生效 (nftables 表 inet ${NFT_TABLE} 不存在)"
+    if sudo -n nft list table inet "$NFT_TABLE" >/dev/null 2>&1; then
+        local rule_desc
+        rule_desc=$(sudo -n nft list table inet "$NFT_TABLE" 2>/dev/null | grep -E 'accept' | grep -v 'ct state' | grep -v 'policy accept' | sed -E 's/^[[:space:]]+//' | tr '\n' ' ' || true)
+        nft_summary="已生效 (${rule_desc})"
+    fi
+    printf "  %-14s: %s\n" "防火墙状态" "$nft_summary"
+    echo "================================================="
+}
+
+cmd_logs() {
+    local target="service"
+    local follow=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            service) target="service" ;;
+            download) target="download" ;;
+            -f|--follow) follow=1 ;;
+            *)
+                echo "未知参数: $1 (支持: service, download, -f)" >&2
+                return 1
+                ;;
+        esac
+        shift
+    done
+    
+    local log_file="${LOG_DIR}/${target}.log"
+    if [ ! -f "$log_file" ]; then
+        echo "提示: 日志文件尚未生成: ${log_file} (服务可能尚未启动)"
+        return 0
+    fi
+    
+    if [ "$follow" -eq 1 ]; then
+        exec tail -f "$log_file"
+    else
+        tail -n 50 "$log_file"
+    fi
+}
+
+cmd_allow() {
+    local ip="${1:-}"
+    if [ -z "$ip" ]; then
+        echo "用法: pulse allow <ip>" >&2
+        echo "示例: pulse allow 10.103.111.190" >&2
+        return 1
+    fi
+    
+    if ! [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        echo "错误: '$ip' 不是合法的 IPv4 地址。" >&2
+        return 1
+    fi
+    
+    local octets=()
+    IFS=. read -r -a octets <<< "$ip"
+    for oct in "${octets[@]}"; do
+        if [ "$oct" -lt 0 ] || [ "$oct" -gt 255 ]; then
+            echo "错误: '$ip' 中的数值 $oct 超出 0-255 范围。" >&2
+            return 1
+        fi
+    done
+    
+    ensure_dirs
+    echo "$ip" > "$ALLOWED_IP_FILE"
+    echo "已保存放行 IP: $ip (配置文件: $ALLOWED_IP_FILE)"
+    apply_firewall
+}
+
+cmd_install() {
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "${script_dir}/install.sh" ]; then
+        exec "${script_dir}/install.sh" "$@"
+    elif [ -f "${script_dir}/../deploy/install.sh" ]; then
+        exec "${script_dir}/../deploy/install.sh" "$@"
+    else
+        echo "AgentPulse 已安装在: ${INSTALL_DIR}"
+        echo "如需从源码重新安装，请执行代码仓库中的 deploy/install.sh"
+    fi
+}
+
+cmd_uninstall() {
+    echo "正在卸载 AgentPulse..."
+    cmd_stop || true
+    if [ -L "$BIN_DIR/pulse" ] || [ -f "$BIN_DIR/pulse" ]; then
+        rm -f "$BIN_DIR/pulse"
+        echo "已移除命令软链接: $BIN_DIR/pulse"
+    fi
+    if [ -d "$INSTALL_DIR" ]; then
+        rm -rf "$INSTALL_DIR"
+        echo "已清理安装目录: $INSTALL_DIR"
+    fi
+    echo "AgentPulse 卸载完成。"
+}
+
+cmd_help() {
+    cat <<EOF
+用法: pulse <command> [arguments]
+
+管理 AgentPulse 监控服务与 APK 下载服务。
+
+命令:
+  start                  启动监控服务 (7890) 与下载服务 (7891) 并配置防火墙
+  stop                   停止所有服务并清理防火墙规则
+  restart                重启服务并重新加载配置与防火墙
+  status                 查看运行状态、端口监听、健康检查、手机连接与防火墙
+  logs [service|download] [-f]
+                         查看服务日志 (默认 service，加 -f 持续跟随)
+  allow <ip>             修改放行手机 IP 并即时生效且持久化
+  install                安装 AgentPulse 到系统 (~/.local/share/agentpulse)
+  uninstall              卸载 AgentPulse 并移除命令
+  help                   显示本帮助信息
+
+环境变量支持:
+  AGENTPULSE_INSTALL_DIR   自定义安装根目录 (默认: ~/.local/share/agentpulse)
+  AGENTPULSE_PORT          自定义监控服务端口 (默认: 7890)
+  AGENTPULSE_DOWNLOAD_PORT 自定义下载服务端口 (默认: 7891)
+  AGENTPULSE_NFT_TABLE     自定义 nftables 表名 (默认: agentpulse)
+EOF
+}
+
+main() {
+    local cmd="${1:-help}"
+    [ $# -gt 0 ] && shift || true
+    
+    case "$cmd" in
+        start)      cmd_start "$@" ;;
+        stop)       cmd_stop "$@" ;;
+        restart)    cmd_restart "$@" ;;
+        status)     cmd_status "$@" ;;
+        logs)       cmd_logs "$@" ;;
+        allow)      cmd_allow "$@" ;;
+        install)    cmd_install "$@" ;;
+        uninstall)  cmd_uninstall "$@" ;;
+        help|-h|--help) cmd_help ;;
+        *)
+            echo "未知命令: $cmd" >&2
+            echo "运行 'pulse help' 查看可用命令。" >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
